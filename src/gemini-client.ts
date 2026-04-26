@@ -85,6 +85,16 @@ interface GeminiFormattedMessage {
 	parts: GeminiPart[];
 }
 
+interface MergedToolResponse {
+	name: string;
+	content: ChatMessage["content"];
+}
+
+type MergedToolMessage = ChatMessage & {
+	_is_merged_tool?: boolean;
+	_tool_responses?: MergedToolResponse[];
+};
+
 interface ProjectDiscoveryResponse {
 	cloudaicompanionProject?: string;
 }
@@ -179,7 +189,7 @@ export class GeminiApiClient {
 				},
 				body: JSON.stringify(payload)
 			}).catch(() => { /* Silent fail */ });
-		} catch (e) {
+		} catch {
 			// Silent fail
 		}
 	}
@@ -190,7 +200,7 @@ export class GeminiApiClient {
 	 */
 	private preprocessMessages(messages: ChatMessage[]): ChatMessage[] {
 		const processed: ChatMessage[] = [];
-		let currentToolMessage: any = null;
+		let currentToolMessage: MergedToolMessage | null = null;
 		
 		// Map to store tool_call_id -> function_name mapping from assistant messages
 		const toolNameMap = new Map<string, string>();
@@ -212,11 +222,12 @@ export class GeminiApiClient {
 				if (!currentToolMessage) {
 					currentToolMessage = {
 						role: "tool",
+						content: "",
 						_is_merged_tool: true,
 						_tool_responses: [{ name: realFunctionName, content: msg.content }]
 					};
 				} else {
-					currentToolMessage._tool_responses.push({ name: realFunctionName, content: msg.content });
+					currentToolMessage._tool_responses!.push({ name: realFunctionName, content: msg.content });
 				}
 			} else {
 				if (currentToolMessage) {
@@ -281,10 +292,11 @@ export class GeminiApiClient {
 		// Handle tool call results (tool role in OpenAI format)
 		if (msg.role === "tool") {
 			const parts: GeminiPart[] = [];
+			const toolMessage = msg as MergedToolMessage;
 
-			if ((msg as any)._is_merged_tool && (msg as any)._tool_responses) {
+			if (toolMessage._is_merged_tool && toolMessage._tool_responses) {
 				// Handle merged tool responses for parallel calls
-				for (const response of (msg as any)._tool_responses) {
+				for (const response of toolMessage._tool_responses) {
 					parts.push({
 						functionResponse: {
 							name: response.name || "unknown_function",
@@ -353,7 +365,7 @@ export class GeminiApiClient {
 					const imageUrl = content.image_url.url;
 
 					// Validate image URL
-					const { isValid, error, mimeType } = validateContent("image_url", content);
+					const { isValid, error } = validateContent("image_url", content);
 					if (!isValid) {
 						throw new Error(`Invalid image: ${error}`);
 					}
@@ -784,7 +796,13 @@ export class GeminiApiClient {
 		const startTime = Date.now();
 		let firstChunkTime: number | null = null;
 		let traceId: string | undefined = undefined;
-		const activeProjectId = (streamRequest as any)?.project || "default-project";
+		const activeProjectId =
+			typeof streamRequest === "object" &&
+			streamRequest !== null &&
+			"project" in streamRequest &&
+			typeof (streamRequest as { project?: unknown }).project === "string"
+				? (streamRequest as { project: string }).project
+				: "default-project";
 		
 		let fullGeneratedText = "";
 		let citationsCount = 0;
@@ -833,7 +851,7 @@ export class GeminiApiClient {
 
 					// Check if text content contains <think> tags (e.g. for models that don't use part.thought)
 					if (part.text && (part.text.includes("<think>") || isThinking)) {
-						let text = part.text;
+						const text = part.text;
 						
 						if (part.text.includes("<think>")) {
 							isThinking = true;
@@ -1037,11 +1055,13 @@ export class GeminiApiClient {
 		} & NativeToolsRequestParams
 	): Promise<{
 		content: string;
+		reasoning?: string;
 		usage?: UsageData;
 		tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
 	}> {
 		try {
 			let content = "";
+			let reasoning = "";
 			let usage: UsageData | undefined;
 			const tool_calls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> = [];
 
@@ -1049,6 +1069,17 @@ export class GeminiApiClient {
 			for await (const chunk of this.streamContent(modelId, systemPrompt, messages, options)) {
 				if (chunk.type === "text" && typeof chunk.data === "string") {
 					content += chunk.data;
+				} else if (chunk.type === "reasoning" && typeof chunk.data === "object") {
+					const reasoningData = chunk.data as ReasoningData;
+					reasoning += reasoningData.reasoning;
+					if (reasoningData.toolCode) {
+						reasoning += `\n${reasoningData.toolCode}`;
+					}
+				} else if (
+					(chunk.type === "real_thinking" || chunk.type === "thinking_content") &&
+					typeof chunk.data === "string"
+				) {
+					reasoning += chunk.data;
 				} else if (chunk.type === "usage" && typeof chunk.data === "object") {
 					usage = chunk.data as UsageData;
 				} else if (chunk.type === "tool_code" && typeof chunk.data === "object") {
@@ -1067,6 +1098,7 @@ export class GeminiApiClient {
 
 			return {
 				content,
+				reasoning: reasoning || undefined,
 				usage,
 				tool_calls: tool_calls.length > 0 ? tool_calls : undefined
 			};

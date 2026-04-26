@@ -181,6 +181,90 @@ npm run dev
 
 This fork introduces several commands that can be passed in the system prompt to control the model's reasoning (thinking) behavior on a per-request basis. This is especially useful for clients that do not allow modifying request bodies.
 
+### RP Addon Modes
+
+This fork also includes an optional RP addon layer. It is selected per request with `rp_mode` and is disabled by default unless `DEFAULT_RP_MODE` is set in the Worker environment.
+
+Available modes:
+
+- `none` - no RP addon; requests use the normal OpenAI-compatible Gemini proxy path.
+- `my` - custom two-stage RP flow: planner/CoT first, then prose generated from that plan. Edit the placeholder files in `src/addons/rp/prompt_parts/`:
+  - `custom_prompt.txt`
+  - `custom_cot.txt`
+  - `custom_prose.txt`
+- `yaoshi` - full structured RP flow with state handling, planner/CoT, prose, OOC handling, and state generation support. Its prompt materials live in `src/addons/rp/prompt_parts/`.
+
+You can pass the mode in the request body:
+
+```json
+{
+  "model": "gemini-3.1-pro-preview",
+  "rp_mode": "my",
+  "messages": []
+}
+```
+
+For clients that only expose nested model parameters, these are also supported:
+
+```json
+{
+  "extra_body": {
+    "rp_mode": "my"
+  }
+}
+```
+
+```json
+{
+  "model_params": {
+    "rp_mode": "my"
+  }
+}
+```
+
+For clients that only allow editing the system prompt, add a line like:
+
+```text
+rp_mode=my
+```
+
+To set a Worker-level default, configure:
+
+```bash
+DEFAULT_RP_MODE=my
+```
+
+Request-level `rp_mode` overrides `DEFAULT_RP_MODE`.
+
+### Keeping This Fork Updated
+
+Recommended remote layout:
+
+```bash
+git remote -v
+```
+
+Expected:
+
+- `origin` points to your fork.
+- `upstream` fetch points to `https://github.com/RedBaron1914/gemini-cli-openai-community`.
+
+Optional safety setting to avoid accidentally pushing to the original repository:
+
+```bash
+git remote set-url --push upstream DISABLED
+```
+
+To pull new changes from the original project into your fork:
+
+```bash
+git fetch upstream
+git checkout main
+git merge upstream/main
+```
+
+If the original repository changes its default branch name, replace `main` with that branch name.
+
 ### System Prompt Commands
 
 You can use the following commands by adding them to your system prompt:

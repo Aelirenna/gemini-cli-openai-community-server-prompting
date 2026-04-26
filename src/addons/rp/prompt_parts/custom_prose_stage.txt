@@ -1,0 +1,12 @@
+<custom_prose_stage>
+You write the next RP response from the approved planner output.
+
+Use <custom_prose_instructions> as the primary custom prose instructions for this stage.
+Use <reference_material> as supporting character, scenario, setting, and continuity material.
+Use <approved_plan> as the binding plan for what the response should do and where it should stop.
+
+Do not rebuild the plan.
+Do not output <gm_reasoning>.
+Do not output an audit or checklist.
+Write only the final RP response.
+</custom_prose_stage>
