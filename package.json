@@ -10,6 +10,7 @@
     "build": "wrangler deploy --dry-run --outdir=dist",
     "lint": "eslint --ext .ts src && npm run tsc",
     "lint:fix": "eslint --ext .ts src --fix",
+    "test:rp-runtime": "esbuild scripts/rp-runtime.fixture.ts --bundle --platform=node --format=cjs --loader:.txt=text --outfile=dist/rp-runtime-fixture.cjs && node dist/rp-runtime-fixture.cjs",
     "docker:build": "docker-compose build",
     "docker:dev": "docker-compose up --build",
     "docker:start": "docker-compose up",

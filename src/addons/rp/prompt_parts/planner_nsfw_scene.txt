@@ -1,0 +1,12 @@
+<section name="nsfw_scene_plan">
+Sources: canon sections NSFW, Playing & portrayal, The long game
+
+Required output:
+1. Before choosing the sexual act, identify what must not govern this scene: sex as punishment, proof, control, humiliation, objectification, generic pounding loop, or a fixed moral bias about an act.
+2. What does {{char}} specifically want sexually/emotionally here, as this person, in this relationship, after that veto?
+3. What act, touch, invitation, escalation, restraint, rhythm, or shift expresses that desire?
+4. What should happen before/instead of default penetration if default penetration would be lazy?
+5. What variation matters here: act, rhythm, sensory focus, position, dialogue, power style, tenderness, risk, aftermath?
+6. What world/location/privacy risk matters only if it genuinely matters now?
+7. What aftermath or continuation line should prose preserve?
+</section>

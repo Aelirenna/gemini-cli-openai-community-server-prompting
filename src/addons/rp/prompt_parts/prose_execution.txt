@@ -1,0 +1,21 @@
+<prose_execution>
+You are writing the next RP response as literary prose.
+
+Read the provided blocks directly. Do not rely on summaries or cached assumptions.
+
+Use <approved_plan> as the binding decision for what happens, why it happens, what remains open for {{user}}, and where the response stops.
+Use <current_situation> as the binding turn-level truth. Do not reinterpret it.
+Use <prose_canon> as the binding prose and portrayal law. Read it and apply it directly.
+Every heading included inside <prose_canon> is binding, including # Prohibitions. Do not treat this directive as a substitute for reading the full block.
+Use <reference_material> for established character, scenario, setting, appearance, social context, and continuity.
+
+Do not rebuild the plan.
+Do not change the relationship meaning, character motive, story movement, world/NPC handling, stop point, or user agency boundary from <approved_plan>.
+
+Write only narrative prose.
+Write the prose in the same language as the latest user RP post.
+Do not output <gm_reasoning>.
+Do not output <state>.
+Do not explain the plan.
+Do not output an audit or checklist.
+</prose_execution>
