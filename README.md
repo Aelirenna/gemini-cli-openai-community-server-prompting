@@ -7,6 +7,8 @@ This fork keeps the original OpenAI-compatible Gemini Worker base and adds an op
 For the original Worker setup, deployment, authentication, and model notes, use the upstream README:
 [RedBaron1914/gemini-cli-openai-community](https://github.com/RedBaron1914/gemini-cli-openai-community).
 
+Install and deploy this fork the same way as the original project. The difference is the added RP addon files and the `rp_mode` switch.
+
 ## RP Modes
 
 - `none` - default proxy behavior. No RP addon is used.
@@ -25,78 +27,24 @@ The `my` mode is intentionally minimal. Edit these placeholder files:
 
 The stage wiring stays in code, while the custom prompt content stays in separate text files.
 
-## Selecting A Mode
+## Enabling A Mode
 
-Request body:
-
-```json
-{
-  "model": "gemini-3.1-pro-preview",
-  "rp_mode": "my",
-  "messages": []
-}
-```
-
-Nested client parameters are also supported:
-
-```json
-{
-  "extra_body": {
-    "rp_mode": "my"
-  }
-}
-```
-
-```json
-{
-  "model_params": {
-    "rp_mode": "my"
-  }
-}
-```
-
-System prompt command:
-
-```text
-rp_mode=my
-```
-
-Worker default:
+Set the Worker variable:
 
 ```bash
 DEFAULT_RP_MODE=my
 ```
 
-Request-level `rp_mode` overrides `DEFAULT_RP_MODE`.
+Allowed values:
 
-## Development
+- `none`
+- `my`
+- `yaoshi`
 
-```bash
-npm install
-npm run lint
-npm run test:rp-runtime
-npm run build
+For per-chat switching, add a system prompt command:
+
+```text
+rp_mode=my
 ```
 
-`wrangler.toml` is kept aligned with the upstream project. Configure your own Cloudflare account, KV namespace, project settings, and secrets outside this fork's committed config.
-
-## Keeping The Fork Updated
-
-Recommended remotes:
-
-- `origin` - this fork.
-- `upstream` - `https://github.com/RedBaron1914/gemini-cli-openai-community`.
-
-Fetch and merge upstream changes when needed:
-
-```bash
-git fetch upstream
-git checkout main
-git merge upstream/main
-```
-
-Optional safety setting:
-
-```bash
-git remote set-url --push upstream DISABLED
-```
+`wrangler.toml` is kept aligned with the upstream project. Configure your own Cloudflare account, KV namespace, project settings, Worker variables, and secrets the same way as in the original setup.
