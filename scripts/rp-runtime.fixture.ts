@@ -30,20 +30,21 @@ function messagesToText(messages: ChatMessage[]): string {
 	return messages.map((message) => contentToText(message.content)).join("\n\n");
 }
 
-function getStage(system: string): StageName {
-	if (system.includes("You are the state update step.")) {
+function getStage(system: string, messages: ChatMessage[]): StageName {
+	const lastUserPayload = contentToText(messages[messages.length - 1]?.content ?? "");
+	if (lastUserPayload.includes("You are the state update step.")) {
 		return "state";
 	}
-	if (system.includes("<custom_planner_stage>")) {
+	if (lastUserPayload.includes("<custom_planner_stage>")) {
 		return "custom_planner";
 	}
-	if (system.includes("<custom_prose_stage>")) {
+	if (lastUserPayload.includes("<custom_prose_stage>")) {
 		return "custom_prose";
 	}
 	if (system.includes("<planner_canon>")) {
 		return "planner";
 	}
-	if (system.includes("<prose_execution>")) {
+	if (lastUserPayload.includes("<prose_execution>")) {
 		return "prose";
 	}
 	throw new Error("Unknown RP stage prompt.");
@@ -157,7 +158,7 @@ function makeServices(calls: StageCall[], overrides: Partial<Record<StageName, s
 		authManager: {} as ChatServices["authManager"],
 		geminiClient: {
 			async getCompletion(model: string, system: string, messages: ChatMessage[], options?: Record<string, unknown>) {
-				const stage = getStage(system);
+				const stage = getStage(system, messages);
 				calls.push({
 					model,
 					system,
@@ -196,18 +197,20 @@ async function testNormalPipeline(): Promise<void> {
 	const result = await runNormalRpTurn(makeServices(calls), makeRequest(makeMessages()));
 
 	expect(calls.length === 3, `expected 3 stage calls, got ${calls.length}`);
-	expect(getStage(calls[0].system) === "state", "first call must be state update");
-	expect(getStage(calls[1].system) === "planner", "second call must be planner");
-	expect(getStage(calls[2].system) === "prose", "third call must be prose");
+	expect(getStage(calls[0].system, calls[0].messages) === "state", "first call must be state update");
+	expect(getStage(calls[1].system, calls[1].messages) === "planner", "second call must be planner");
+	expect(getStage(calls[2].system, calls[2].messages) === "prose", "third call must be prose");
 
 	for (const [index, stage] of ["state", "planner", "prose"].entries()) {
 		expectHistoryIsStateClean(calls[index], stage);
 	}
 
 	const stateUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
+	expect(stateUserPayload.includes("You are the state update step."), "state update instructions must be sent as user task");
 	expect(stateUserPayload.includes("<previous_technical_state>"), "state update must receive previous technical state");
 	expect(stateUserPayload.includes("<decoded_previous_state>"), "state update must receive decoded previous state");
 	expect(stateUserPayload.includes("<current_situation>"), "state update must receive previous current_situation");
+	expect(!calls[0].system.includes("You are the state update step."), "state update instructions must not be sent as system");
 
 	const plannerUserPayload = contentToText(calls[1].messages[calls[1].messages.length - 1].content);
 	expect(plannerUserPayload.includes("<current_situation>"), "planner must receive current_situation");
@@ -218,16 +221,18 @@ async function testNormalPipeline(): Promise<void> {
 	expect(!plannerUserPayload.includes('"rf":'), "planner must not receive raw rf JSON");
 
 	const proseUserPayload = contentToText(calls[2].messages[calls[2].messages.length - 1].content);
+	expect(proseUserPayload.includes("<prose_execution>"), "prose instructions must be sent as user task");
 	expect(proseUserPayload.includes("<current_situation>"), "prose must receive current_situation");
 	expect(proseUserPayload.includes("<approved_plan>"), "prose must receive approved_plan");
 	expect(!proseUserPayload.includes("<previous_technical_state>"), "prose must not receive previous technical state");
 	expect(!proseUserPayload.includes("<decoded_previous_state>"), "prose must not receive decoded previous state");
 	expect(!proseUserPayload.includes('"r":'), "prose must not receive raw r JSON");
 	expect(!proseUserPayload.includes('"rf":'), "prose must not receive raw rf JSON");
+	expect(!calls[2].system.includes("<prose_execution>"), "prose instructions must not be sent as system");
 
 	expect(calls[0].options.temperature === 0.2, "state update temperature override changed");
 	expect(calls[0].options.top_p === 0.5, "state update top_p override changed");
-	expect(calls[1].options.temperature === 0.35, "planner temperature override changed");
+	expect(calls[1].options.temperature === 1, "planner temperature override changed");
 	expect(calls[1].options.top_p === 0.8, "planner top_p override changed");
 	expect(calls[2].options.temperature === 0.7, "prose should preserve request temperature");
 	expect(calls[2].options.top_p === 0.9, "prose should preserve request top_p");
@@ -246,8 +251,8 @@ async function testCustomPipeline(): Promise<void> {
 	const result = await runCustomRpTurn(makeServices(calls), makeRequest(makeCustomMessages(), "my"));
 
 	expect(calls.length === 2, `custom mode expected 2 stage calls, got ${calls.length}`);
-	expect(getStage(calls[0].system) === "custom_planner", "custom first call must be planner");
-	expect(getStage(calls[1].system) === "custom_prose", "custom second call must be prose");
+	expect(getStage(calls[0].system, calls[0].messages) === "custom_planner", "custom first call must be planner");
+	expect(getStage(calls[1].system, calls[1].messages) === "custom_prose", "custom second call must be prose");
 
 	for (const [index, stage] of ["custom_planner", "custom_prose"].entries()) {
 		expectHistoryIsStateClean(calls[index], stage);
@@ -263,9 +268,10 @@ async function testCustomPipeline(): Promise<void> {
 	expect(!plannerSystem.includes("<state_update_canon>"), "custom planner must not receive state update canon");
 
 	const plannerUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
-	expect(plannerUserPayload.includes("<custom_planner_request>"), "custom planner must receive planner request");
+	expect(plannerUserPayload.includes("<custom_planner_stage>"), "custom planner instructions must be sent as user task");
 	expect(!plannerUserPayload.includes("<current_situation>"), "custom planner must not receive current_situation");
 	expect(!plannerUserPayload.includes("<previous_technical_state>"), "custom planner must not receive previous technical state");
+	expect(!plannerSystem.includes("<custom_planner_stage>"), "custom planner stage instructions must not be sent as system");
 
 	const proseSystem = calls[1].system;
 	expect(proseSystem.includes("<custom_prose_instructions>"), "custom prose must receive custom_prose_instructions");
@@ -274,11 +280,13 @@ async function testCustomPipeline(): Promise<void> {
 	expect(!proseSystem.includes("<prose_canon>"), "custom prose must not receive yaoshi prose canon");
 
 	const proseUserPayload = contentToText(calls[1].messages[calls[1].messages.length - 1].content);
+	expect(proseUserPayload.includes("<custom_prose_stage>"), "custom prose instructions must be sent as user task");
 	expect(proseUserPayload.includes("<approved_plan>"), "custom prose must receive approved plan");
 	expect(proseUserPayload.includes("<gm_reasoning>"), "custom prose approved plan must include planner output");
 	expect(!proseUserPayload.includes("<current_situation>"), "custom prose must not receive current_situation");
+	expect(!proseSystem.includes("<custom_prose_stage>"), "custom prose stage instructions must not be sent as system");
 
-	expect(calls[0].options.temperature === 0.35, "custom planner temperature override changed");
+	expect(calls[0].options.temperature === 1, "custom planner temperature override changed");
 	expect(calls[0].options.top_p === 0.8, "custom planner top_p override changed");
 	expect(calls[1].options.temperature === 0.7, "custom prose should preserve request temperature");
 	expect(calls[1].options.top_p === 0.9, "custom prose should preserve request top_p");

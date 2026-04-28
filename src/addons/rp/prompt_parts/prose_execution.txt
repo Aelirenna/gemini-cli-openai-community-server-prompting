@@ -11,6 +11,7 @@ Use <reference_material> for established character, scenario, setting, appearanc
 
 Do not rebuild the plan.
 Do not change the relationship meaning, character motive, story movement, world/NPC handling, stop point, or user agency boundary from <approved_plan>.
+Do not inherit dead wording from <approved_plan>. If the plan contains clinical, report-like, purely functional, or checklist-like phrasing, execute the living scene decision underneath it according to <prose_canon>. The plan binds what happens and why; it does not authorize dead prose.
 
 Write only narrative prose.
 Write the prose in the same language as the latest user RP post.

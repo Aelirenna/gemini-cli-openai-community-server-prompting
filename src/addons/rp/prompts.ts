@@ -43,23 +43,31 @@ function buildReferenceMaterial(initialData: InitialPromptData): string {
 	return referenceParts.length > 0 ? `<reference_material>\n${referenceParts.join("\n\n")}\n</reference_material>` : "";
 }
 
-export function buildInitialStateSystemPrompt(initialData: InitialPromptData, relationshipRules: string, traitDefinitions: string): string {
-	const referenceMaterial =
-		buildReferenceMaterial(initialData);
+export function buildInitialStatePrompt(initialData: InitialPromptData, relationshipRules: string, traitDefinitions: string): StagePrompt {
+	const systemParts: string[] = [];
+	const referenceMaterial = buildReferenceMaterial(initialData);
+	if (referenceMaterial) {
+		systemParts.push(referenceMaterial);
+	}
+	if (relationshipRules.trim()) {
+		systemParts.push(`<relationship_rules>\n${relationshipRules}\n</relationship_rules>`);
+	}
+	if (traitDefinitions.trim()) {
+		systemParts.push(`<trait_definitions>\n${traitDefinitions}\n</trait_definitions>`);
+	}
 
-	return fillTemplate(initialStatePrompt, {
-		REFERENCE_MATERIAL: referenceMaterial,
-		RELATIONSHIP_RULES: relationshipRules,
-		TRAIT_DEFINITIONS: traitDefinitions
-	});
+	return {
+		system: systemParts.join("\n\n"),
+		user: initialStatePrompt
+	};
 }
 
-export function buildOocAnalysisSystemPrompt(
+export function buildOocAnalysisPrompt(
 	interpretedState: WorldState,
 	initialData: InitialPromptData,
 	promptMaterials: Record<string, string> = {}
-): string {
-	const systemParts = [oocAnalysisPrompt];
+): StagePrompt {
+	const systemParts: string[] = [];
 	const sceneMode = Object.values(interpretedState.characters).some((character) => character.is_sex_scene)
 		? "sex"
 		: "general";
@@ -100,7 +108,10 @@ export function buildOocAnalysisSystemPrompt(
 		systemParts.push(`<prompt_materials>\n${promptMaterialParts.join("\n\n")}\n</prompt_materials>`);
 	}
 
-	return systemParts.join("\n\n");
+	return {
+		system: systemParts.join("\n\n"),
+		user: oocAnalysisPrompt
+	};
 }
 
 export function getSceneMode(interpretedState: WorldState): SceneMode {
@@ -114,7 +125,6 @@ export function buildStateUpdatePrompt(
 	previousSituation: string
 ): StagePrompt {
 	const systemParts = [
-		stateUpdatePrompt,
 		`<state_update_canon>\n${buildStateUpdateCanon()}\n</state_update_canon>`
 	];
 	const referenceMaterial = buildReferenceMaterial(initialData);
@@ -123,6 +133,7 @@ export function buildStateUpdatePrompt(
 	}
 
 	const userParts = [
+		stateUpdatePrompt,
 		`<previous_technical_state>\n${previousStateBlock}\n</previous_technical_state>`,
 		`<decoded_previous_state>\n${JSON.stringify(previousState)}\n</decoded_previous_state>`
 	];
@@ -171,7 +182,7 @@ export function buildProsePrompt(
 	sceneMode: SceneMode,
 	reasoningBlock: string
 ): StagePrompt {
-	const systemParts = [proseExecutionPrompt, `<prose_canon>\n${buildProseCanon(sceneMode)}\n</prose_canon>`];
+	const systemParts = [`<prose_canon>\n${buildProseCanon(sceneMode)}\n</prose_canon>`];
 	const referenceMaterial = buildReferenceMaterial(initialData);
 	if (referenceMaterial) {
 		systemParts.push(referenceMaterial);
@@ -179,9 +190,9 @@ export function buildProsePrompt(
 
 	const currentSituation = buildCurrentSituation(interpretedState);
 	const userParts = [
+		proseExecutionPrompt,
 		currentSituation,
-		`<approved_plan>\n${reasoningBlock}\n</approved_plan>`,
-		"<final_instructions>\nWrite only the narrative prose for the next RP response. Do not output <state>.\n</final_instructions>"
+		`<approved_plan>\n${reasoningBlock}\n</approved_plan>`
 	].filter((part) => part.trim().length > 0);
 
 	return {
@@ -192,7 +203,6 @@ export function buildProsePrompt(
 
 export function buildCustomPlannerPrompt(initialData: InitialPromptData): StagePrompt {
 	const systemParts = [
-		customPlannerStagePrompt,
 		`<custom_prompt>\n${customPrompt}\n</custom_prompt>`,
 		`<custom_cot>\n${customCotPrompt}\n</custom_cot>`
 	];
@@ -203,13 +213,12 @@ export function buildCustomPlannerPrompt(initialData: InitialPromptData): StageP
 
 	return {
 		system: systemParts.join("\n\n"),
-		user: "<custom_planner_request>\nPlan the next RP response for the latest user turn. Output exactly one <gm_reasoning> block.\n</custom_planner_request>"
+		user: customPlannerStagePrompt
 	};
 }
 
 export function buildCustomProsePrompt(initialData: InitialPromptData, reasoningBlock: string): StagePrompt {
 	const systemParts = [
-		customProseStagePrompt,
 		`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`
 	];
 	const referenceMaterial = buildReferenceMaterial(initialData);
@@ -220,8 +229,8 @@ export function buildCustomProsePrompt(initialData: InitialPromptData, reasoning
 	return {
 		system: systemParts.join("\n\n"),
 		user: [
+			customProseStagePrompt,
 			`<approved_plan>\n${reasoningBlock}\n</approved_plan>`,
-			"<custom_prose_request>\nWrite the next RP response from <approved_plan>.\n</custom_prose_request>"
 		].join("\n\n")
 	};
 }

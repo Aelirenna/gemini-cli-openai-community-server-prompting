@@ -123,7 +123,6 @@ export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
 	const stateMatch = content.match(/<state>\s*(.*?)\s*<\/state>/s);
 
 	if (!stateMatch || !stateMatch[1]) {
-		console.log("--- DEBUG: <state> block not found in last assistant message ---");
 		return worldState;
 	}
 
@@ -179,9 +178,6 @@ export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
 				};
 			}
 		}
-
-		console.log("--- DEBUG: Successfully parsed state from JSON ---");
-		console.log(JSON.stringify(worldState, null, 2));
 	} catch (error) {
 		console.error("--- DEBUG: Failed to parse state JSON. Content was:", stateMatch[1], "Error:", error);
 		return { characters: {} };
