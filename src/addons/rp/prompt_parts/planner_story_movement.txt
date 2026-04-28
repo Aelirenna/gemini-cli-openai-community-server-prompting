@@ -1,11 +1,10 @@
-<section name="story_movement_plan">
+Story Movement Plan
 Sources: canon sections The long game and Metacare
 
-Required output:
+Answer these questions directly:
 1. What is the meaningful turn-level change?
 2. Does it move plot, relationship, information, consequence, intimacy, conflict, recovery, social position, travel, preparation, aftermath, or daily-life continuity?
 3. If the answer is only routine, what emotional/social/world meaning makes the routine playable?
 4. If there is no meaning, replace the routine with a grounded next phase from established reality.
 5. What can become lighter, more hopeful, more open, or more playable if the current arc is becoming only suffering?
 6. What opening does user receive at the stop point without forcing them to become a different kind of character?
-</section>

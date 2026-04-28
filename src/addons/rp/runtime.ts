@@ -152,13 +152,6 @@ export async function runStateUpdateStage(
 			top_p: 0.5
 		});
 
-	logRpDebug(debugId, "state_update", "request", {
-		model: request.model,
-		system: prompt.system,
-		messages,
-		options
-	});
-
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
 		completion = await services.geminiClient.getCompletion(request.model, prompt.system, messages, options);
@@ -183,7 +176,6 @@ export async function runStateUpdateStage(
 		throw new Error("State update step did not return a <state> block.");
 	}
 
-	logRpDebug(debugId, "state_update", "parsed_state_block", stateBlock);
 	return stateBlock;
 }
 
@@ -206,12 +198,6 @@ export async function runStateUpdateForRequest(
 	const previousSituation = buildCurrentSituation(interpretState(previousState, rules));
 	const prompt = buildStateUpdatePrompt(initialData, previousStateBlock, previousState, previousSituation);
 
-	logRpDebug(debugId, "state_update", "prepared_inputs", {
-		previousStateBlock,
-		previousState,
-		previousSituation
-	});
-
 	return runStateUpdateStage(services, request, prompt, debugId);
 }
 
@@ -231,16 +217,9 @@ export async function runPlannerStage(
 		];
 	const options = sanitizeStageGenerationOptions(request, {
 			includeReasoning: false,
-			temperature: 0.35,
+			temperature: 1,
 			top_p: 0.8
 		});
-
-	logRpDebug(debugId, stageName, "request", {
-		model: request.model,
-		system: prompt.system,
-		messages,
-		options
-	});
 
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
@@ -266,7 +245,6 @@ export async function runPlannerStage(
 		throw new Error("Planner step did not return a <gm_reasoning> block.");
 	}
 
-	logRpDebug(debugId, stageName, "parsed_gm_reasoning", reasoningBlock);
 	return reasoningBlock;
 }
 
@@ -290,13 +268,6 @@ export async function runProseStage(
 			top_p: request.generationOptions.top_p ?? 0.95
 		});
 
-	logRpDebug(debugId, "prose", "request", {
-		model: request.model,
-		system: prompt.system,
-		messages,
-		options
-	});
-
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
 		completion = await services.geminiClient.getCompletion(request.model, prompt.system, messages, options);
@@ -305,15 +276,7 @@ export async function runProseStage(
 		throw error;
 	}
 
-	logRpDebug(debugId, "prose", "model_output", {
-		content: completion.content,
-		reasoning: completion.reasoning,
-		usage: completion.usage,
-		tool_calls: completion.tool_calls
-	});
-
 	const finalOutput = appendExactStateBlock(completion.content, stateBlock);
-	logRpDebug(debugId, "prose", "final_output", finalOutput);
 	return finalOutput;
 }
 
@@ -336,13 +299,6 @@ export async function runCustomProseStage(
 			top_p: request.generationOptions.top_p ?? 0.95
 		});
 
-	logRpDebug(debugId, "custom_prose", "request", {
-		model: request.model,
-		system: prompt.system,
-		messages,
-		options
-	});
-
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
 		completion = await services.geminiClient.getCompletion(request.model, prompt.system, messages, options);
@@ -351,15 +307,7 @@ export async function runCustomProseStage(
 		throw error;
 	}
 
-	logRpDebug(debugId, "custom_prose", "model_output", {
-		content: completion.content,
-		reasoning: completion.reasoning,
-		usage: completion.usage,
-		tool_calls: completion.tool_calls
-	});
-
 	const finalOutput = stripStateBlocksFromText(stripGmReasoningBlocksFromText(completion.content));
-	logRpDebug(debugId, "custom_prose", "final_output", finalOutput);
 	return finalOutput;
 }
 
@@ -383,7 +331,7 @@ export async function runCustomRpTurn(
 	const finalOutput = await runCustomProseStage(services, request, prosePrompt, debugId);
 
 	logRpDebug(debugId, "custom_turn", "done", {
-		finalOutput
+		outputLength: finalOutput.length
 	});
 	return finalOutput;
 }
@@ -407,19 +355,13 @@ export async function runNormalRpTurn(
 	const updatedState = parseStateBlock(stateBlock);
 	const interpretedState = interpretState(updatedState, rules);
 	const sceneMode = getSceneMode(interpretedState);
-	logRpDebug(debugId, "normal_turn", "updated_state", {
-		stateBlock,
-		updatedState,
-		interpretedState,
-		sceneMode
-	});
 	const plannerPrompt = buildPlannerPrompt(initialData, interpretedState, sceneMode);
 	const reasoningBlock = await runPlannerStage(services, request, plannerPrompt, debugId);
 	const prosePrompt = buildProsePrompt(initialData, interpretedState, sceneMode, reasoningBlock);
 
 	const finalOutput = await runProseStage(services, request, prosePrompt, stateBlock, debugId);
 	logRpDebug(debugId, "normal_turn", "done", {
-		finalOutput
+		outputLength: finalOutput.length
 	});
 	return finalOutput;
 }

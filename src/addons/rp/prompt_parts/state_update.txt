@@ -107,7 +107,9 @@ Field update rules:
 - this is in-world time for continuity and timeskips
 - preserve by default
 - update only when played reality actually implies time movement
-- use it for real time skips, waiting, travel, sleep, longer passage of time, or clear change of time of day
+- keep the format stable and concrete enough for continuity; prefer preserving the previous date/day marker and only changing the time of day when needed
+- do not output vague relative labels like `next morning`, `later`, `soon`, or `after some time`
+- if exact calendar date is unknown, use a stable story-relative format such as `Day 2, morning`
 - do not advance time for flavor
 
 Behavior rules:

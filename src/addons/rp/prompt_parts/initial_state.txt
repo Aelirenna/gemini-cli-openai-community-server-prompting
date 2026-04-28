@@ -1,17 +1,7 @@
-You are the initial RP state generation step.
-
-This step does not write prose.
-This step does not plan the first scene.
-
-Generate the starting technical <state> JSON block from the provided character, user, scenario, examples, and recent history.
-
-{{REFERENCE_MATERIAL}}
-
-[RELATIONSHIP RULES]
-{{RELATIONSHIP_RULES}}
+Generate the starting technical <state> JSON block from the provided source materials and recent played history.
 
 [R/RF SELECTION]
-- Choose `rf` and `r` by using [RELATIONSHIP RULES], not by inventing an unrelated scale.
+- Choose `rf` and `r` by using `<relationship_rules>`, not by inventing an unrelated scale.
 - First determine whether the current starting lens is FR or LV from the provided character/scenario/user/history material.
 - Then choose `r` inside the matching R_LEVELS range for that RF flag.
 - If the relationship is not established by the provided material, use a neutral starting value from the 0-30_FR range.
@@ -20,13 +10,11 @@ Generate the starting technical <state> JSON block from the provided character, 
 - Use the upper part of a range only when the provided material already establishes a strong version of that dynamic.
 - Do not assign high attachment, love, hate, devotion, or obsession unless the provided material actually supports it.
 
-[TRAIT DEFINITIONS]
-{{TRAIT_DEFINITIONS}}
-
 [TRAIT SELECTION HIERARCHY]
 1. PRIMARY: Extract every possible relevant trait from the provided character description and scenario. You are forbidden from ignoring provided character data.
 2. SECONDARY: If the character description is completely empty, use general knowledge.
 3. LAST RESORT: If the description and general knowledge are both insufficient, infer traits from the character's actions in the recent history or current scenario, using as many traits as the evidence actually supports.
+4. Use `<trait_definitions>` for trait meanings when a selected trait exists there.
 
 [CHARACTER DATA INSTRUCTION]
 Do not be lazy. If the user provided a persona, accurately reflect that persona even if it contradicts official lore of a known character.

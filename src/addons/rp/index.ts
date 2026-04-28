@@ -10,7 +10,7 @@ import {
 	relationshipRulesContent,
 	traitDefinitions
 } from "./compiler";
-import { buildInitialStateSystemPrompt, buildOocAnalysisSystemPrompt } from "./prompts";
+import { buildInitialStatePrompt, buildOocAnalysisPrompt } from "./prompts";
 import {
 	createRpDebugId,
 	extractStateBlockFromOutput,
@@ -42,6 +42,16 @@ function getLastUserMessageText(messages: ChatMessage[]): string {
 	}
 
 	return "";
+}
+
+function buildInitialStateMessages(historyMessages: ChatMessage[], initialStateRequest: string): ChatMessage[] {
+	return [
+		...stripStateBlocksFromMessages(historyMessages),
+		{
+			role: "user",
+			content: `<initial_state_request>\n${initialStateRequest.trim()}\n</initial_state_request>`
+		}
+	];
 }
 
 function buildChatCompletionResponse(model: string, content: string): ChatCompletionResponse {
@@ -110,38 +120,27 @@ export const rpAddon: ChatAddon = {
 		if (INITIAL_STATE_COMMAND_REGEX.test(lastUserText)) {
 			const debugId = createRpDebugId();
 			const initialData = parseInitialPrompt(request.systemPrompt);
-			const stateSystemPrompt = buildInitialStateSystemPrompt(initialData, relationshipRulesContent, traitDefinitions);
+			const statePrompt = buildInitialStatePrompt(initialData, relationshipRulesContent, traitDefinitions);
 			const stateMessages = request.cleanedMessages.slice(-10, -1);
-			const initialStateMessages =
-				stateMessages.length > 0
-					? stateMessages
-					: [
-							{
-								role: "user",
-								content: "Generate the initial <state> block."
-							}
-						];
+			const initialStateMessages = buildInitialStateMessages(stateMessages, statePrompt.user);
 			const initialStateOptions = {
 				...request.generationOptions,
 				includeReasoning: false,
-				temperature: 0.3
+				temperature: 0.3,
+				top_p: 0.5,
+				max_tokens: 2048,
+				presence_penalty: 0,
+				frequency_penalty: 0
 			};
 			delete initialStateOptions.response_format;
 			delete initialStateOptions.stop;
-
-			logRpDebug(debugId, "initial_state", "request", {
-				model: request.model,
-				system: stateSystemPrompt,
-				messages: initialStateMessages,
-				options: initialStateOptions
-			});
 
 			const { geminiClient } = await tools.createServices();
 			let completion: Awaited<ReturnType<typeof geminiClient.getCompletion>>;
 			try {
 				completion = await geminiClient.getCompletion(
 					request.model,
-					stateSystemPrompt,
+					statePrompt.system,
 					initialStateMessages,
 					initialStateOptions
 				);
@@ -149,13 +148,6 @@ export const rpAddon: ChatAddon = {
 				logRpError(debugId, "initial_state", "completion_error", error);
 				throw error;
 			}
-
-			logRpDebug(debugId, "initial_state", "model_output", {
-				content: completion.content,
-				reasoning: completion.reasoning,
-				usage: completion.usage,
-				tool_calls: completion.tool_calls
-			});
 
 			const stateBlock = extractStateBlockFromOutput(completion.content);
 			if (!stateBlock) {
@@ -166,7 +158,6 @@ export const rpAddon: ChatAddon = {
 				return context.json({ error: "Initial state generation did not return a <state> block." }, 500);
 			}
 
-			logRpDebug(debugId, "initial_state", "parsed_state_block", stateBlock);
 			return buildChatCompletionOutput(request, stateBlock);
 		}
 
@@ -175,12 +166,18 @@ export const rpAddon: ChatAddon = {
 			const rules = parseRules(relationshipRulesContent);
 			const previousState = extractPreviousState(request.otherMessages);
 			const interpretedState = interpretState(previousState, rules);
-			const oocSystemPrompt = buildOocAnalysisSystemPrompt(interpretedState, initialData, {
+			const oocPrompt = buildOocAnalysisPrompt(interpretedState, initialData, {
 				relationship_rules: relationshipRulesContent,
 				traits_definitions: traitDefinitions
 			});
 
-			const oocMessages = stripStateBlocksFromMessages(request.cleanedMessages);
+			const oocMessages = [
+				...stripStateBlocksFromMessages(request.cleanedMessages),
+				{
+					role: "user",
+					content: oocPrompt.user
+				}
+			];
 			const oocOptions = {
 				...request.generationOptions,
 				includeReasoning: request.includeReasoning,
@@ -191,22 +188,9 @@ export const rpAddon: ChatAddon = {
 			};
 			const debugId = createRpDebugId();
 
-			logRpDebug(debugId, "ooc", "request", {
-				model: request.model,
-				system: oocSystemPrompt,
-				messages: oocMessages,
-				options: oocOptions
-			});
-
 			try {
 				const services = await tools.createServices();
-				const completion = await services.geminiClient.getCompletion(request.model, oocSystemPrompt, oocMessages, oocOptions);
-				logRpDebug(debugId, "ooc", "model_output", {
-					content: completion.content,
-					reasoning: completion.reasoning,
-					usage: completion.usage,
-					tool_calls: completion.tool_calls
-				});
+				const completion = await services.geminiClient.getCompletion(request.model, oocPrompt.system, oocMessages, oocOptions);
 				return buildChatCompletionOutput(request, completion.content);
 			} catch (error) {
 				logRpError(debugId, "ooc", "completion_error", error);

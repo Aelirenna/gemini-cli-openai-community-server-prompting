@@ -2,6 +2,7 @@ import canonPreservation from "./prompt_parts/canon_preservation.txt";
 
 const CANON_HEADING_REGEX = /^#\s+(.+)$/gm;
 const PLANNER_CANON_SECTIONS = [
+	"Contract",
 	"Main",
 	"Metacare",
 	"The long game",
@@ -9,8 +10,8 @@ const PLANNER_CANON_SECTIONS = [
 	"Prohibitions",
 	"Physical logic"
 ];
-const PROSE_CANON_SECTIONS = ["Writing", "Physical logic", "Playing & portrayal", "Prohibitions"];
-const STATE_UPDATE_CANON_SECTIONS = ["Playing & portrayal", "Prohibitions"];
+const PROSE_CANON_SECTIONS = ["Contract", "Writing", "Physical logic", "Playing & portrayal", "Prohibitions"];
+const STATE_UPDATE_CANON_SECTIONS = ["Contract", "Playing & portrayal", "Prohibitions"];
 
 export function getCanonSection(title: string): string {
 	const matches = [...canonPreservation.matchAll(CANON_HEADING_REGEX)];
