@@ -1,10 +1,10 @@
 import { buildCharacterPlannerCanon, buildGmPlannerCanon, buildPlannerCanon, buildProseCanon } from "./canon";
 import { buildCurrentSituation } from "./compiler";
-import customCotPrompt from "./prompt_parts/custom_cot.txt";
+import customPlannerDirectivePrompt from "./prompt_parts/custom_planner_directive.txt";
 import customPlannerStagePrompt from "./prompt_parts/custom_planner_stage.txt";
-import customPrompt from "./prompt_parts/custom_prompt.txt";
 import customProsePrompt from "./prompt_parts/custom_prose.txt";
 import customProseStagePrompt from "./prompt_parts/custom_prose_stage.txt";
+import customSystemPrompt from "./prompt_parts/custom_system_prompt.txt";
 import initialStatePrompt from "./prompt_parts/initial_state.txt";
 import plannerGmReasoningPrompt from "./prompt_parts/planner_gm_reasoning.txt";
 import oocAnalysisPrompt from "./prompt_parts/ooc_analysis.txt";
@@ -139,6 +139,23 @@ export function buildStateUpdatePrompt(
 	};
 }
 
+export function buildCustomOocAnalysisPrompt(initialData: InitialPromptData): StagePrompt {
+	const systemParts = [
+		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`,
+		`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`,
+		`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`
+	];
+	const referenceMaterial = buildReferenceMaterial(initialData);
+	if (referenceMaterial) {
+		systemParts.push(referenceMaterial);
+	}
+
+	return {
+		system: systemParts.join("\n\n"),
+		user: oocAnalysisPrompt
+	};
+}
+
 export function buildPlannerPrompt(
 	initialData: InitialPromptData,
 	interpretedState: WorldState,
@@ -212,8 +229,8 @@ export function buildProsePrompt(
 
 export function buildCustomPlannerPrompt(initialData: InitialPromptData): StagePrompt {
 	const systemParts = [
-		`<custom_prompt>\n${customPrompt}\n</custom_prompt>`,
-		`<custom_cot>\n${customCotPrompt}\n</custom_cot>`
+		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`,
+		`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`
 	];
 	const referenceMaterial = buildReferenceMaterial(initialData);
 	if (referenceMaterial) {

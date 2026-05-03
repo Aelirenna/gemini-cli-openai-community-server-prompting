@@ -1,9 +1,10 @@
 import type { ChatMessage } from "../src/types";
 import type { ChatServices, PreparedChatCompletionRequest } from "../src/core/chat/types";
 import { buildCurrentSituation, extractPreviousState, interpretState, parseRules, relationshipRulesContent } from "../src/addons/rp/compiler";
+import { rpAddon } from "../src/addons/rp";
 import { runCustomRpTurn, runNormalRpTurn } from "../src/addons/rp/runtime";
 
-type StageName = "state" | "gm_planner" | "character_planner" | "prose" | "custom_planner" | "custom_prose";
+type StageName = "state" | "gm_planner" | "character_planner" | "prose" | "custom_planner" | "custom_prose" | "custom_ooc";
 
 interface StageCall {
 	model: string;
@@ -34,6 +35,9 @@ function getStage(system: string, messages: ChatMessage[]): StageName {
 	const lastUserPayload = contentToText(messages[messages.length - 1]?.content ?? "");
 	if (system.includes("You are the state finalizer step.") || lastUserPayload.includes("<state_finalizer_request>")) {
 		return "state";
+	}
+	if (lastUserPayload.includes("# OOC ANALYSIS MODE") && system.includes("<custom_system_prompt>")) {
+		return "custom_ooc";
 	}
 	if (lastUserPayload.includes("<custom_planner_stage>")) {
 		return "custom_planner";
@@ -159,6 +163,7 @@ function makeServices(calls: StageCall[], overrides: Partial<Record<StageName, s
 		"</gm_reasoning>";
 	const customProseText =
 		"They took the device carefully and turned it toward the light.\n\n<gm_reasoning>bad leak</gm_reasoning>\n\n<state>{\"bad\":true}</state>";
+	const customOocText = "Custom OOC answer.";
 
 	return {
 		authManager: {} as ChatServices["authManager"],
@@ -181,10 +186,12 @@ function makeServices(calls: StageCall[], overrides: Partial<Record<StageName, s
 								? gmPlanBlock
 								: stage === "character_planner"
 									? characterPlanBlock
-								: stage === "custom_planner"
-									? customPlannerBlock
-									: stage === "custom_prose"
-										? customProseText
+							: stage === "custom_planner"
+								? customPlannerBlock
+								: stage === "custom_prose"
+									? customProseText
+									: stage === "custom_ooc"
+										? customOocText
 										: proseText)
 				};
 			}
@@ -309,11 +316,11 @@ async function testCustomPipeline(): Promise<void> {
 	}
 
 	const plannerSystem = calls[0].system;
-	expect(plannerSystem.includes("<custom_prompt>"), "custom planner must receive custom_prompt");
-	expect(plannerSystem.includes("<custom_cot>"), "custom planner must receive custom_cot");
+	expect(plannerSystem.includes("<custom_system_prompt>"), "custom planner must receive custom_system_prompt");
+	expect(plannerSystem.includes("<custom_planner_directive>"), "custom planner must receive custom_planner_directive");
 	expect(plannerSystem.includes("<reference_material>"), "custom planner must receive reference material");
-	expect(plannerSystem.indexOf("<custom_prompt>") < plannerSystem.indexOf("<reference_material>"), "custom_prompt must be above reference material");
-	expect(plannerSystem.indexOf("<custom_cot>") < plannerSystem.indexOf("<reference_material>"), "custom_cot must be above reference material");
+	expect(plannerSystem.indexOf("<custom_system_prompt>") < plannerSystem.indexOf("<reference_material>"), "custom_system_prompt must be above reference material");
+	expect(plannerSystem.indexOf("<custom_planner_directive>") < plannerSystem.indexOf("<reference_material>"), "custom_planner_directive must be above reference material");
 	expect(!plannerSystem.includes("<planner_canon>"), "custom planner must not receive yaoshi planner canon");
 	expect(!plannerSystem.includes("<state_update_canon>"), "custom planner must not receive state update canon");
 
@@ -368,6 +375,42 @@ async function testMalformedStageOutputs(): Promise<void> {
 	);
 }
 
+async function testCustomOocRouting(): Promise<void> {
+	const calls: StageCall[] = [];
+	const messages = makeCustomMessages();
+	messages[messages.length - 1] = {
+		role: "user",
+		content: "OOC: why did that response fail?"
+	};
+	const request = makeRequest(messages, "my");
+	request.model = "gemini-2.5-flash";
+	request.rawBody.model = "gemini-2.5-flash";
+	const response = await rpAddon.handleRequest!(
+		request,
+		{
+			json(payload: unknown, status?: number) {
+				return Response.json(payload, { status });
+			}
+		} as Parameters<NonNullable<typeof rpAddon.handleRequest>>[1],
+		{
+			createServices: async () => makeServices(calls),
+			runDefault: async () => new Response("default")
+		}
+	);
+
+	expect(response instanceof Response, "custom OOC must return a Response");
+	const body = await response.json() as { choices?: Array<{ message?: { content?: string | null } }> };
+	expect(calls.length === 1, `custom OOC expected 1 model call, got ${calls.length}`);
+	expect(getStage(calls[0].system, calls[0].messages) === "custom_ooc", "custom OOC must use OOC stage");
+	expect(calls[0].system.includes("<custom_system_prompt>"), "custom OOC must receive custom_system_prompt");
+	expect(calls[0].system.includes("<custom_planner_directive>"), "custom OOC must receive custom_planner_directive");
+	expect(calls[0].system.includes("<custom_prose_instructions>"), "custom OOC must receive custom prose instructions");
+	expect(calls[0].system.includes("<reference_material>"), "custom OOC must receive reference material");
+	const userPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
+	expect(userPayload.includes("# OOC ANALYSIS MODE"), "custom OOC must receive OOC request prompt");
+	expect(body.choices?.[0]?.message?.content === "Custom OOC answer.", "custom OOC response content mismatch");
+}
+
 function testPregnancyCurrentSituation(): void {
 	const rules = parseRules(relationshipRulesContent);
 	const legacyState = extractPreviousState([
@@ -412,6 +455,7 @@ async function expectRejects(action: () => Promise<unknown>, expectedMessage: st
 export async function runRpRuntimeFixture(): Promise<void> {
 	await testNormalPipeline();
 	await testCustomPipeline();
+	await testCustomOocRouting();
 	await testMissingPreviousState();
 	await testMalformedStageOutputs();
 	testPregnancyCurrentSituation();

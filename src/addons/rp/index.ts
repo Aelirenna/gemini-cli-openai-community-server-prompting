@@ -10,7 +10,7 @@ import {
 	relationshipRulesContent,
 	traitDefinitions
 } from "./compiler";
-import { buildInitialStatePrompt, buildOocAnalysisPrompt } from "./prompts";
+import { buildCustomOocAnalysisPrompt, buildInitialStatePrompt, buildOocAnalysisPrompt } from "./prompts";
 import {
 	createRpDebugId,
 	extractStateBlockFromOutput,
@@ -100,8 +100,40 @@ export const rpAddon: ChatAddon = {
 	name: "rp-addon",
 	async handleRequest(request, context, tools) {
 		validatePreparedChatRequest(request);
+		const lastUserText = getLastUserMessageText(request.otherMessages).trim();
+		const initialData = parseInitialPrompt(request.systemPrompt);
 
 		if (request.rpMode === "my") {
+			if (lastUserText && OOC_REGEX.test(lastUserText)) {
+				const oocPrompt = buildCustomOocAnalysisPrompt(initialData);
+				const oocMessages = [
+					...stripStateBlocksFromMessages(request.cleanedMessages),
+					{
+						role: "user",
+						content: oocPrompt.user
+					}
+				];
+				const oocOptions = {
+					...request.generationOptions,
+					includeReasoning: request.includeReasoning,
+					reasoning_effort: request.reasoningEffort,
+					tools: request.tools,
+					tool_choice: request.toolChoice,
+					showReasoning: request.showReasoning
+				};
+				const debugId = createRpDebugId();
+
+				try {
+					const services = await tools.createServices();
+					const completion = await services.geminiClient.getCompletion(request.model, oocPrompt.system, oocMessages, oocOptions);
+					return buildChatCompletionOutput(request, completion.content);
+				} catch (error) {
+					logRpError(debugId, "custom_ooc", "completion_error", error);
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return context.json({ error: errorMessage }, 500);
+				}
+			}
+
 			try {
 				const services = await tools.createServices();
 				const content = await runCustomRpTurn(services, request);
@@ -116,10 +148,8 @@ export const rpAddon: ChatAddon = {
 			return null;
 		}
 
-		const lastUserText = getLastUserMessageText(request.otherMessages).trim();
 		if (INITIAL_STATE_COMMAND_REGEX.test(lastUserText)) {
 			const debugId = createRpDebugId();
-			const initialData = parseInitialPrompt(request.systemPrompt);
 			const statePrompt = buildInitialStatePrompt(initialData, relationshipRulesContent, traitDefinitions);
 			const stateMessages = request.cleanedMessages.slice(-10, -1);
 			const initialStateMessages = buildInitialStateMessages(stateMessages, statePrompt.user);
@@ -163,7 +193,6 @@ export const rpAddon: ChatAddon = {
 			return buildChatCompletionOutput(request, stateBlock);
 		}
 
-		const initialData = parseInitialPrompt(request.systemPrompt);
 		if (lastUserText && OOC_REGEX.test(lastUserText)) {
 			const rules = parseRules(relationshipRulesContent);
 			const previousState = extractPreviousState(request.otherMessages);
