@@ -141,18 +141,21 @@ export function buildStateUpdatePrompt(
 
 export function buildCustomOocAnalysisPrompt(initialData: InitialPromptData): StagePrompt {
 	const systemParts = [
-		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`,
-		`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`,
-		`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`
+		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`
 	];
 	const referenceMaterial = buildReferenceMaterial(initialData);
 	if (referenceMaterial) {
 		systemParts.push(referenceMaterial);
 	}
+	const userParts = [
+		`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`,
+		`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`,
+		oocAnalysisPrompt
+	];
 
 	return {
 		system: systemParts.join("\n\n"),
-		user: oocAnalysisPrompt
+		user: userParts.join("\n\n")
 	};
 }
 
@@ -229,23 +232,7 @@ export function buildProsePrompt(
 
 export function buildCustomPlannerPrompt(initialData: InitialPromptData): StagePrompt {
 	const systemParts = [
-		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`,
-		`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`
-	];
-	const referenceMaterial = buildReferenceMaterial(initialData);
-	if (referenceMaterial) {
-		systemParts.push(referenceMaterial);
-	}
-
-	return {
-		system: systemParts.join("\n\n"),
-		user: customPlannerStagePrompt
-	};
-}
-
-export function buildCustomProsePrompt(initialData: InitialPromptData, reasoningBlock: string): StagePrompt {
-	const systemParts = [
-		`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`
+		`<custom_system_prompt>\n${customSystemPrompt}\n</custom_system_prompt>`
 	];
 	const referenceMaterial = buildReferenceMaterial(initialData);
 	if (referenceMaterial) {
@@ -255,6 +242,23 @@ export function buildCustomProsePrompt(initialData: InitialPromptData, reasoning
 	return {
 		system: systemParts.join("\n\n"),
 		user: [
+			`<custom_planner_directive>\n${customPlannerDirectivePrompt}\n</custom_planner_directive>`,
+			customPlannerStagePrompt
+		].join("\n\n")
+	};
+}
+
+export function buildCustomProsePrompt(initialData: InitialPromptData, reasoningBlock: string): StagePrompt {
+	const systemParts: string[] = [];
+	const referenceMaterial = buildReferenceMaterial(initialData);
+	if (referenceMaterial) {
+		systemParts.push(referenceMaterial);
+	}
+
+	return {
+		system: systemParts.join("\n\n"),
+		user: [
+			`<custom_prose_instructions>\n${customProsePrompt}\n</custom_prose_instructions>`,
 			customProseStagePrompt,
 			`<approved_plan>\n${reasoningBlock}\n</approved_plan>`,
 		].join("\n\n")

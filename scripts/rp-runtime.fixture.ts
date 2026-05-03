@@ -320,27 +320,29 @@ async function testCustomPipeline(): Promise<void> {
 
 	const plannerSystem = calls[0].system;
 	expect(plannerSystem.includes("<custom_system_prompt>"), "custom planner must receive custom_system_prompt");
-	expect(plannerSystem.includes("<custom_planner_directive>"), "custom planner must receive custom_planner_directive");
 	expect(plannerSystem.includes("<reference_material>"), "custom planner must receive reference material");
 	expect(plannerSystem.indexOf("<custom_system_prompt>") < plannerSystem.indexOf("<reference_material>"), "custom_system_prompt must be above reference material");
-	expect(plannerSystem.indexOf("<custom_planner_directive>") < plannerSystem.indexOf("<reference_material>"), "custom_planner_directive must be above reference material");
+	expect(!plannerSystem.includes("<custom_planner_directive>"), "custom planner directive must not be sent as system");
 	expect(!plannerSystem.includes("<planner_canon>"), "custom planner must not receive yaoshi planner canon");
 	expect(!plannerSystem.includes("<state_update_canon>"), "custom planner must not receive state update canon");
 
 	const plannerUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
+	expect(plannerUserPayload.includes("<custom_planner_directive>"), "custom planner must receive custom_planner_directive as user task");
 	expect(plannerUserPayload.includes("<custom_planner_stage>"), "custom planner instructions must be sent as user task");
+	expect(plannerUserPayload.indexOf("<custom_planner_directive>") < plannerUserPayload.indexOf("<custom_planner_stage>"), "custom planner directive must be before stage task");
 	expect(!plannerUserPayload.includes("<current_situation>"), "custom planner must not receive current_situation");
 	expect(!plannerUserPayload.includes("<previous_technical_state>"), "custom planner must not receive previous technical state");
 	expect(!plannerSystem.includes("<custom_planner_stage>"), "custom planner stage instructions must not be sent as system");
 
 	const proseSystem = calls[1].system;
-	expect(proseSystem.includes("<custom_prose_instructions>"), "custom prose must receive custom_prose_instructions");
 	expect(proseSystem.includes("<reference_material>"), "custom prose must receive reference material");
-	expect(proseSystem.indexOf("<custom_prose_instructions>") < proseSystem.indexOf("<reference_material>"), "custom prose instructions must be above reference material");
+	expect(!proseSystem.includes("<custom_prose_instructions>"), "custom prose instructions must not be sent as system");
 	expect(!proseSystem.includes("<prose_canon>"), "custom prose must not receive yaoshi prose canon");
 
 	const proseUserPayload = contentToText(calls[1].messages[calls[1].messages.length - 1].content);
+	expect(proseUserPayload.includes("<custom_prose_instructions>"), "custom prose must receive custom_prose_instructions as user task");
 	expect(proseUserPayload.includes("<custom_prose_stage>"), "custom prose instructions must be sent as user task");
+	expect(proseUserPayload.indexOf("<custom_prose_instructions>") < proseUserPayload.indexOf("<custom_prose_stage>"), "custom prose instructions must be before stage task");
 	expect(proseUserPayload.includes("<approved_plan>"), "custom prose must receive approved plan");
 	expect(proseUserPayload.includes("<gm_reasoning>"), "custom prose approved plan must include planner output");
 	expect(!proseUserPayload.includes("<current_situation>"), "custom prose must not receive current_situation");
@@ -406,10 +408,12 @@ async function testCustomOocRouting(): Promise<void> {
 	expect(calls.length === 1, `custom OOC expected 1 model call, got ${calls.length}`);
 	expect(getStage(calls[0].system, calls[0].messages) === "custom_ooc", "custom OOC must use OOC stage");
 	expect(calls[0].system.includes("<custom_system_prompt>"), "custom OOC must receive custom_system_prompt");
-	expect(calls[0].system.includes("<custom_planner_directive>"), "custom OOC must receive custom_planner_directive");
-	expect(calls[0].system.includes("<custom_prose_instructions>"), "custom OOC must receive custom prose instructions");
+	expect(!calls[0].system.includes("<custom_planner_directive>"), "custom OOC planner directive must not be sent as system");
+	expect(!calls[0].system.includes("<custom_prose_instructions>"), "custom OOC prose instructions must not be sent as system");
 	expect(calls[0].system.includes("<reference_material>"), "custom OOC must receive reference material");
 	const userPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
+	expect(userPayload.includes("<custom_planner_directive>"), "custom OOC must receive custom_planner_directive as user task");
+	expect(userPayload.includes("<custom_prose_instructions>"), "custom OOC must receive custom prose instructions as user task");
 	expect(userPayload.includes("# OOC ANALYSIS MODE"), "custom OOC must receive OOC request prompt");
 	expect(body.choices?.[0]?.message?.content === "Custom OOC answer.", "custom OOC response content mismatch");
 }
