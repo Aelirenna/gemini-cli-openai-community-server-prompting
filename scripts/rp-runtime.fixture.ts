@@ -3,7 +3,7 @@ import type { ChatServices, PreparedChatCompletionRequest } from "../src/core/ch
 import { buildCurrentSituation, extractPreviousState, interpretState, parseRules, relationshipRulesContent } from "../src/addons/rp/compiler";
 import { runCustomRpTurn, runNormalRpTurn } from "../src/addons/rp/runtime";
 
-type StageName = "state" | "planner" | "prose" | "custom_planner" | "custom_prose";
+type StageName = "state" | "gm_planner" | "character_planner" | "prose" | "custom_planner" | "custom_prose";
 
 interface StageCall {
 	model: string;
@@ -32,7 +32,7 @@ function messagesToText(messages: ChatMessage[]): string {
 
 function getStage(system: string, messages: ChatMessage[]): StageName {
 	const lastUserPayload = contentToText(messages[messages.length - 1]?.content ?? "");
-	if (lastUserPayload.includes("You are the state update step.")) {
+	if (system.includes("You are the state finalizer step.") || lastUserPayload.includes("<state_finalizer_request>")) {
 		return "state";
 	}
 	if (lastUserPayload.includes("<custom_planner_stage>")) {
@@ -41,11 +41,14 @@ function getStage(system: string, messages: ChatMessage[]): StageName {
 	if (lastUserPayload.includes("<custom_prose_stage>")) {
 		return "custom_prose";
 	}
-	if (system.includes("<planner_canon>")) {
-		return "planner";
-	}
 	if (lastUserPayload.includes("<prose_execution>")) {
 		return "prose";
+	}
+	if (lastUserPayload.includes("<character_plan>")) {
+		return "character_planner";
+	}
+	if (lastUserPayload.includes("<gm_plan>")) {
+		return "gm_planner";
 	}
 	throw new Error("Unknown RP stage prompt.");
 }
@@ -84,7 +87,7 @@ function makeRequest(messages: ChatMessage[], rpMode: "my" | "yaoshi" = "yaoshi"
 
 function makeMessages(includePreviousState = true): ChatMessage[] {
 	const previousState =
-		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":5,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}}}</state>';
+		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":5,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}},"threads":"garden tension: first meeting remains unresolved beyond the current cup exchange"}</state>';
 
 	return [
 		{
@@ -140,12 +143,15 @@ function makeCustomMessages(): ChatMessage[] {
 
 function makeServices(calls: StageCall[], overrides: Partial<Record<StageName, string>> = {}): ChatServices {
 	const stateBlock =
-		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":6,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}}}</state>';
-	const plannerBlock =
-		"<gm_reasoning>\n" +
-		"<current_situation_guard>Yaoshi registers the restraint as a small positive movement, not instant trust.</current_situation_guard>\n" +
-		"<prose_handoff>Write a quiet response that acknowledges the cup and leaves room for {{user}}.</prose_handoff>\n" +
-		"</gm_reasoning>";
+		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":6,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}},"threads":"garden tension: first meeting remains unresolved beyond the current cup exchange"}</state>';
+	const gmPlanBlock =
+		"<gm_plan>\n" +
+		"<world>Keep the garden quiet and let the unanswered cup remain the turn-level opening.</world>\n" +
+		"</gm_plan>";
+	const characterPlanBlock =
+		"<character_plan>\n" +
+		"<character>Yaoshi registers the restraint as a small positive movement, not instant trust.</character>\n" +
+		"</character_plan>";
 	const proseText = "Yaoshi looked at the cup before he answered, quieter than before.\n\n<state>{\"bad\":true}</state>";
 	const customPlannerBlock =
 		"<gm_reasoning>\n" +
@@ -171,8 +177,10 @@ function makeServices(calls: StageCall[], overrides: Partial<Record<StageName, s
 						overrides[stage] ??
 						(stage === "state"
 							? stateBlock
-							: stage === "planner"
-								? plannerBlock
+							: stage === "gm_planner"
+								? gmPlanBlock
+								: stage === "character_planner"
+									? characterPlanBlock
 								: stage === "custom_planner"
 									? customPlannerBlock
 									: stage === "custom_prose"
@@ -196,53 +204,95 @@ async function testNormalPipeline(): Promise<void> {
 	const calls: StageCall[] = [];
 	const result = await runNormalRpTurn(makeServices(calls), makeRequest(makeMessages()));
 
-	expect(calls.length === 3, `expected 3 stage calls, got ${calls.length}`);
-	expect(getStage(calls[0].system, calls[0].messages) === "state", "first call must be state update");
-	expect(getStage(calls[1].system, calls[1].messages) === "planner", "second call must be planner");
+	expect(calls.length === 4, `expected 4 stage calls, got ${calls.length}`);
+	expect(getStage(calls[0].system, calls[0].messages) === "gm_planner", "first call must be GM planner");
+	expect(getStage(calls[1].system, calls[1].messages) === "character_planner", "second call must be character planner");
 	expect(getStage(calls[2].system, calls[2].messages) === "prose", "third call must be prose");
+	expect(getStage(calls[3].system, calls[3].messages) === "state", "fourth call must be state finalizer");
+	expect(calls[0].model === "gemini-3-flash-preview", "GM planner must use Flash model override");
+	expect(calls[1].model === "gemini-fixture", "character planner must use request model");
+	expect(calls[0].system.includes("<reference_material>"), "GM planner must receive reference material as system");
+	expect(calls[1].system.includes("<reference_material>"), "character planner must receive reference material as system");
+	expect(!calls[0].system.includes("<planner_canon>"), "GM planner canon must not be sent as system");
+	expect(!calls[1].system.includes("<planner_canon>"), "character planner canon must not be sent as system");
 
-	for (const [index, stage] of ["state", "planner", "prose"].entries()) {
+	for (const [index, stage] of ["gm_planner", "character_planner", "prose", "state"].entries()) {
 		expectHistoryIsStateClean(calls[index], stage);
 	}
 
-	const stateUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
-	expect(stateUserPayload.includes("You are the state update step."), "state update instructions must be sent as user task");
-	expect(stateUserPayload.includes("<previous_technical_state>"), "state update must receive previous technical state");
-	expect(stateUserPayload.includes("<decoded_previous_state>"), "state update must receive decoded previous state");
-	expect(stateUserPayload.includes("<current_situation>"), "state update must receive previous current_situation");
-	expect(!calls[0].system.includes("You are the state update step."), "state update instructions must not be sent as system");
+	const gmPlannerUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
+	expect(gmPlannerUserPayload.includes("<gm_plan_request>"), "GM planner must receive plan request in user payload");
+	expect(gmPlannerUserPayload.includes("<planner_prompt_sections>"), "GM planner must receive prompt sections in user payload");
+	expect(gmPlannerUserPayload.includes("<planner_canon>"), "GM planner must receive planner canon in user payload");
+	expect(gmPlannerUserPayload.includes("# Role separation"), "GM planner must receive full canon sections in user payload");
+	expect(!gmPlannerUserPayload.includes("<reference_material>"), "GM planner must not receive reference material in user payload");
+	expect(gmPlannerUserPayload.includes("<current_situation>"), "GM planner must receive current_situation");
+	expect(
+		gmPlannerUserPayload.includes("Long-story threads (memory, not a command queue):"),
+		"GM planner must receive story threads in current_situation"
+	);
+	expect(gmPlannerUserPayload.includes("<gm_plan>"), "GM planner must receive GM plan structure");
+	expect(!gmPlannerUserPayload.includes("<previous_technical_state>"), "GM planner must not receive previous technical state");
+	expect(!gmPlannerUserPayload.includes("<decoded_previous_state>"), "GM planner must not receive decoded previous state");
+	expect(!gmPlannerUserPayload.includes('"r":'), "GM planner must not receive raw r JSON");
+	expect(!gmPlannerUserPayload.includes('"rf":'), "GM planner must not receive raw rf JSON");
 
-	const plannerUserPayload = contentToText(calls[1].messages[calls[1].messages.length - 1].content);
-	expect(plannerUserPayload.includes("<current_situation>"), "planner must receive current_situation");
-	expect(plannerUserPayload.includes("<gm_reasoning>"), "planner must receive reasoning structure");
-	expect(!plannerUserPayload.includes("<previous_technical_state>"), "planner must not receive previous technical state");
-	expect(!plannerUserPayload.includes("<decoded_previous_state>"), "planner must not receive decoded previous state");
-	expect(!plannerUserPayload.includes('"r":'), "planner must not receive raw r JSON");
-	expect(!plannerUserPayload.includes('"rf":'), "planner must not receive raw rf JSON");
+	const characterPlannerUserPayload = contentToText(calls[1].messages[calls[1].messages.length - 1].content);
+	expect(characterPlannerUserPayload.includes("<character_plan_request>"), "character planner must receive plan request in user payload");
+	expect(characterPlannerUserPayload.includes("<planner_prompt_sections>"), "character planner must receive prompt sections in user payload");
+	expect(characterPlannerUserPayload.includes("<planner_canon>"), "character planner must receive planner canon in user payload");
+	expect(characterPlannerUserPayload.includes("# Playing & portrayal"), "character planner must receive full canon sections in user payload");
+	expect(!characterPlannerUserPayload.includes("<reference_material>"), "character planner must not receive reference material in user payload");
+	expect(characterPlannerUserPayload.includes("<current_situation>"), "character planner must receive current_situation");
+	expect(characterPlannerUserPayload.includes("<approved_gm_plan>"), "character planner must receive approved GM plan");
+	expect(characterPlannerUserPayload.includes("<character_plan>"), "character planner must receive character plan structure");
+	expect(!characterPlannerUserPayload.includes("<previous_technical_state>"), "character planner must not receive previous technical state");
+	expect(!characterPlannerUserPayload.includes("<decoded_previous_state>"), "character planner must not receive decoded previous state");
+	expect(!characterPlannerUserPayload.includes('"r":'), "character planner must not receive raw r JSON");
+	expect(!characterPlannerUserPayload.includes('"rf":'), "character planner must not receive raw rf JSON");
 
 	const proseUserPayload = contentToText(calls[2].messages[calls[2].messages.length - 1].content);
 	expect(proseUserPayload.includes("<prose_execution>"), "prose instructions must be sent as user task");
 	expect(proseUserPayload.includes("<current_situation>"), "prose must receive current_situation");
 	expect(proseUserPayload.includes("<approved_plan>"), "prose must receive approved_plan");
+	expect(proseUserPayload.includes("<approved_gm_plan>"), "prose must receive approved GM plan");
+	expect(proseUserPayload.includes("<approved_character_plan>"), "prose must receive approved character plan");
 	expect(!proseUserPayload.includes("<previous_technical_state>"), "prose must not receive previous technical state");
 	expect(!proseUserPayload.includes("<decoded_previous_state>"), "prose must not receive decoded previous state");
 	expect(!proseUserPayload.includes('"r":'), "prose must not receive raw r JSON");
 	expect(!proseUserPayload.includes('"rf":'), "prose must not receive raw rf JSON");
 	expect(!calls[2].system.includes("<prose_execution>"), "prose instructions must not be sent as system");
 
-	expect(calls[0].options.temperature === 0.2, "state update temperature override changed");
-	expect(calls[0].options.top_p === 0.5, "state update top_p override changed");
-	expect(calls[1].options.temperature === 1, "planner temperature override changed");
-	expect(calls[1].options.top_p === 0.8, "planner top_p override changed");
+	const stateUserPayload = contentToText(calls[3].messages[calls[3].messages.length - 1].content);
+	const stateProseMessage = calls[3].messages[calls[3].messages.length - 2];
+	expect(calls[3].system.includes("You are the state finalizer step."), "state finalizer instructions must be sent as system");
+	expect(!stateUserPayload.includes("You are the state finalizer step."), "state finalizer instructions must not be repeated in user task");
+	expect(stateUserPayload.includes("<previous_technical_state>"), "state finalizer must receive previous technical state");
+	expect(stateUserPayload.includes("<decoded_previous_state>"), "state finalizer must receive decoded previous state");
+	expect(stateUserPayload.includes("<current_situation>"), "state finalizer must receive starting current_situation");
+	expect(stateUserPayload.includes("<approved_gm_plan>"), "state finalizer must receive GM plan");
+	expect(stateUserPayload.includes("<approved_character_plan>"), "state finalizer must receive character plan");
+	expect(!calls[3].system.includes("<reference_material>"), "state finalizer must not receive reference material");
+	expect(!calls[3].system.includes("<state_update_canon>"), "state finalizer must not receive state_update_canon");
+	expect(stateProseMessage.role === "assistant", "state finalizer must receive written prose as assistant message");
+	expect(contentToText(stateProseMessage.content).includes("Yaoshi looked at the cup"), "state finalizer assistant message must contain written prose");
+	expect(!contentToText(stateProseMessage.content).includes("<state>"), "state finalizer assistant prose must be state-clean");
+
+	expect(calls[0].options.temperature === 1, "GM planner temperature override changed");
+	expect(calls[0].options.top_p === 0.8, "GM planner top_p override changed");
+	expect(calls[1].options.temperature === 1, "character planner temperature override changed");
+	expect(calls[1].options.top_p === 0.8, "character planner top_p override changed");
 	expect(calls[2].options.temperature === 0.7, "prose should preserve request temperature");
 	expect(calls[2].options.top_p === 0.9, "prose should preserve request top_p");
-	expect(!("response_format" in calls[0].options), "state update must strip response_format");
-	expect(!("stop" in calls[0].options), "state update must strip stop");
+	expect(calls[3].options.temperature === 0.2, "state finalizer temperature override changed");
+	expect(calls[3].options.top_p === 0.5, "state finalizer top_p override changed");
+	expect(!("response_format" in calls[3].options), "state finalizer must strip response_format");
+	expect(!("stop" in calls[3].options), "state finalizer must strip stop");
 
 	expect(result.includes("Yaoshi looked at the cup"), "final result must include prose");
 	expect(!result.includes('"bad":true'), "accidental prose state block must be stripped");
 	expect(result.endsWith(
-		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":6,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}}}</state>'
+		'<state>{"date_time":"Morning","characters":{"Yaoshi":{"r":6,"rf":"FR","pr":null,"loc":"Garden","sex":false,"traits":"Calm,Curious","triggered_milestones":[]}},"threads":"garden tension: first meeting remains unresolved beyond the current cup exchange"}</state>'
 	), "final result must append exact state block from state update");
 }
 
@@ -309,8 +359,12 @@ async function testMalformedStageOutputs(): Promise<void> {
 		"State update step did not return a <state> block."
 	);
 	await expectRejects(
-		() => runNormalRpTurn(makeServices([], { planner: "no planner here" }), makeRequest(makeMessages())),
-		"Planner step did not return a <gm_reasoning> block."
+		() => runNormalRpTurn(makeServices([], { gm_planner: "no planner here" }), makeRequest(makeMessages())),
+		"Planner step did not return a <gm_plan> block."
+	);
+	await expectRejects(
+		() => runNormalRpTurn(makeServices([], { character_planner: "no planner here" }), makeRequest(makeMessages())),
+		"Planner step did not return a <character_plan> block."
 	);
 }
 

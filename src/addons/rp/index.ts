@@ -125,7 +125,9 @@ export const rpAddon: ChatAddon = {
 			const initialStateMessages = buildInitialStateMessages(stateMessages, statePrompt.user);
 			const initialStateOptions = {
 				...request.generationOptions,
-				includeReasoning: false,
+				includeReasoning: request.includeReasoning,
+				reasoning_effort: request.reasoningEffort || "high",
+				showReasoning: request.showReasoning,
 				temperature: 0.3,
 				top_p: 0.5,
 				max_tokens: 2048,

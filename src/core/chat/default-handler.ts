@@ -10,6 +10,7 @@ import { ChatHttpError, ChatRouteContext, ChatServices, PreparedChatCompletionRe
 
 const REASONING_BLOCK_REGEX = /<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>\s*/g;
 const RP_MODES = new Set<RpMode>(["none", "my", "yaoshi"]);
+const DEFAULT_RP_GM_PLANNER_MODEL = "gemini-3-flash-preview";
 
 function parseRpMode(value: string | undefined): RpMode | undefined {
 	if (!value) {
@@ -119,6 +120,8 @@ export function buildPreparedChatRequest(body: ChatCompletionRequest, env: Env):
 	const isRealThinkingEnabled = env.ENABLE_REAL_THINKING === "true";
 	const includeReasoning = reasoningEffort ? reasoningEffort !== "none" : isRealThinkingEnabled;
 	const cleanedMessages = cleanContext ? stripThinkingBlocks(otherMessages) : otherMessages;
+	const rpGmPlannerModel = env.RP_GM_PLANNER_MODEL?.trim() || DEFAULT_RP_GM_PLANNER_MODEL;
+	const rpStateUpdateModel = env.RP_STATE_UPDATE_MODEL?.trim() || undefined;
 
 	return {
 		rawBody: normalizedBody,
@@ -133,6 +136,8 @@ export function buildPreparedChatRequest(body: ChatCompletionRequest, env: Env):
 		includeReasoning,
 		reasoningEffort: reasoningEffort || undefined,
 		rpMode,
+		rpGmPlannerModel,
+		rpStateUpdateModel,
 		generationOptions: {
 			max_tokens: normalizedBody.max_tokens,
 			temperature: normalizedBody.temperature,
@@ -156,6 +161,26 @@ export function validatePreparedChatRequest(request: PreparedChatCompletionReque
 	const modelValidation = validateModel(request.model);
 	if (!modelValidation.isValid) {
 		throw new ChatHttpError(modelValidation.error || "Model validation failed", 400);
+	}
+
+	if (request.rpStateUpdateModel) {
+		const stateModelValidation = validateModel(request.rpStateUpdateModel);
+		if (!stateModelValidation.isValid) {
+			throw new ChatHttpError(
+				stateModelValidation.error || `RP state update model '${request.rpStateUpdateModel}' validation failed`,
+				400
+			);
+		}
+	}
+
+	if (request.rpGmPlannerModel) {
+		const gmPlannerModelValidation = validateModel(request.rpGmPlannerModel);
+		if (!gmPlannerModelValidation.isValid) {
+			throw new ChatHttpError(
+				gmPlannerModelValidation.error || `RP GM planner model '${request.rpGmPlannerModel}' validation failed`,
+				400
+			);
+		}
 	}
 
 	const mediaChecks: {

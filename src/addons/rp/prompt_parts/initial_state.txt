@@ -21,10 +21,10 @@ Do not be lazy. If the user provided a persona, accurately reflect that persona 
 
 [STATE FORMAT]
 Output exactly one single-line minified JSON object wrapped in <state> tags:
-<state>{"date_time":"{{DATE_TIME}}","characters":{"{{char1}}":{"r":{{R_VALUE}},"rf":"{{FR_OR_LV}}","pr":null,"loc":"{{LOCATION}}","sex":false,"traits":"{{TRAITS_STR}}","triggered_milestones":[]}}}</state>
+<state>{"date_time":"{{DATE_TIME}}","characters":{"{{char1}}":{"r":{{R_VALUE}},"rf":"{{FR_OR_LV}}","pr":null,"loc":"{{LOCATION}}","sex":false,"traits":"{{TRAITS_STR}}","triggered_milestones":[]}}},"threads":"{{THREADS_STR}}"}</state>
 
 [FIELD RULES]
-- Top-level keys must be exactly: date_time, characters.
+- Top-level keys must be exactly: date_time, characters, threads.
 - Character keys must be exactly: r, rf, pr, loc, sex, traits, triggered_milestones.
 - r must be within -100..200.
 - rf must be exactly FR or LV.
@@ -33,6 +33,10 @@ Output exactly one single-line minified JSON object wrapped in <state> tags:
 - traits must be a comma-separated string selected according to [TRAIT SELECTION HIERARCHY].
 - triggered_milestones starts as [] unless recent played reality has already observably triggered a milestone.
 - date_time should reflect the scenario or recent history if established; otherwise use a neutral concise in-world value.
+- threads must be a single compact string for durable global story lines that should matter beyond the current turn.
+- Build threads from scenario, persona/lore, and recent played history: active conflict, obligation, mystery, threat, promise, travel arc, social/political situation, unresolved consequence, or other larger story movement.
+- Do not use threads for obvious current-scene facts, posture, local logistics, temporary mood, or a linear recap of recent actions.
+- If no durable global story line is established, use an empty string.
 
 [OUTPUT CONTRACT]
 Output only the <state> block.

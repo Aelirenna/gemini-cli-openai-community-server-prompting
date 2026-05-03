@@ -1,5 +1,6 @@
 import type { ChatMessage } from "../../types";
 import type { ChatGenerationOptions, PreparedChatCompletionRequest, ChatServices } from "../../core/chat/types";
+import type { EffortLevel } from "../../types";
 import {
 	buildCurrentSituation,
 	extractPreviousState,
@@ -10,6 +11,7 @@ import {
 	relationshipRulesContent
 } from "./compiler";
 import {
+	buildGmPlannerPrompt,
 	buildCustomPlannerPrompt,
 	buildCustomProsePrompt,
 	buildPlannerPrompt,
@@ -23,10 +25,13 @@ const STATE_BLOCK_OUTPUT_REGEX = /<state>[\s\S]*?<\/state>/;
 const STATE_BLOCK_GLOBAL_REGEX = /<state>[\s\S]*?<\/state>\s*/g;
 const GM_REASONING_BLOCK_OUTPUT_REGEX = /<gm_reasoning>[\s\S]*?<\/gm_reasoning>/;
 const GM_REASONING_BLOCK_GLOBAL_REGEX = /<gm_reasoning>[\s\S]*?<\/gm_reasoning>\s*/g;
+const PLANNING_BLOCK_GLOBAL_REGEX = /<(gm_reasoning|gm_plan|character_plan)>[\s\S]*?<\/\1>\s*/g;
 const RP_DEBUG_LOG_CHUNK_SIZE = 8_000;
+const DEFAULT_RP_GM_PLANNER_MODEL = "gemini-3-flash-preview";
 
 type StageGenerationOptions = ChatGenerationOptions & {
 	includeReasoning?: boolean;
+	reasoning_effort?: EffortLevel;
 	showReasoning?: boolean;
 };
 
@@ -76,6 +81,10 @@ export function extractGmReasoningBlockFromOutput(output: string): string | null
 	return output.match(GM_REASONING_BLOCK_OUTPUT_REGEX)?.[0] ?? null;
 }
 
+function extractTaggedPlanningBlockFromOutput(output: string, tagName: "gm_reasoning" | "gm_plan" | "character_plan"): string | null {
+	return output.match(new RegExp(`<${tagName}>[\\s\\S]*?<\\/${tagName}>`))?.[0] ?? null;
+}
+
 function sanitizeStageGenerationOptions(
 	request: PreparedChatCompletionRequest,
 	overrides: StageGenerationOptions
@@ -95,6 +104,10 @@ function stripStateBlocksFromText(text: string): string {
 
 function stripGmReasoningBlocksFromText(text: string): string {
 	return text.replace(GM_REASONING_BLOCK_GLOBAL_REGEX, "").trim();
+}
+
+function stripPlanningBlocksFromText(text: string): string {
+	return text.replace(PLANNING_BLOCK_GLOBAL_REGEX, "").trim();
 }
 
 export function stripStateBlocksFromMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -125,7 +138,7 @@ export function stripStateBlocksFromMessages(messages: ChatMessage[]): ChatMessa
 }
 
 function appendExactStateBlock(prose: string, stateBlock: string): string {
-	const cleanProse = stripStateBlocksFromText(prose);
+	const cleanProse = stripPlanningBlocksFromText(stripStateBlocksFromText(prose));
 	return cleanProse ? `${cleanProse}\n\n${stateBlock}` : stateBlock;
 }
 
@@ -137,10 +150,15 @@ export async function runStateUpdateStage(
 	services: ChatServices,
 	request: PreparedChatCompletionRequest,
 	prompt: StagePrompt,
+	writtenProse: string,
 	debugId = createRpDebugId()
 ): Promise<string> {
 	const messages = [
 			...stripStateBlocksFromMessages(request.cleanedMessages),
+			{
+				role: "assistant",
+				content: stripPlanningBlocksFromText(stripStateBlocksFromText(writtenProse))
+			},
 			{
 				role: "user",
 				content: prompt.user
@@ -154,7 +172,8 @@ export async function runStateUpdateStage(
 
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
-		completion = await services.geminiClient.getCompletion(request.model, prompt.system, messages, options);
+		const stateUpdateModel = request.rpStateUpdateModel || request.model;
+		completion = await services.geminiClient.getCompletion(stateUpdateModel, prompt.system, messages, options);
 	} catch (error) {
 		logRpError(debugId, "state_update", "completion_error", error);
 		throw error;
@@ -179,34 +198,14 @@ export async function runStateUpdateStage(
 	return stateBlock;
 }
 
-export async function runStateUpdateForRequest(
-	services: ChatServices,
-	request: PreparedChatCompletionRequest,
-	debugId = createRpDebugId()
-): Promise<string> {
-	const previousStateBlock = extractPreviousStateBlock(request.otherMessages);
-	if (!previousStateBlock) {
-		logRpDebug(debugId, "state_update", "missing_previous_state", {
-			message: "State update requires a previous <state> block."
-		});
-		throw new Error("State update requires a previous <state> block.");
-	}
-
-	const initialData = parseInitialPrompt(request.systemPrompt);
-	const rules = parseRules(relationshipRulesContent);
-	const previousState = extractPreviousState(request.otherMessages);
-	const previousSituation = buildCurrentSituation(interpretState(previousState, rules));
-	const prompt = buildStateUpdatePrompt(initialData, previousStateBlock, previousState, previousSituation);
-
-	return runStateUpdateStage(services, request, prompt, debugId);
-}
-
 export async function runPlannerStage(
 	services: ChatServices,
 	request: PreparedChatCompletionRequest,
 	prompt: StagePrompt,
 	debugId = createRpDebugId(),
-	stageName = "planner"
+	stageName = "planner",
+	outputTag: "gm_reasoning" | "gm_plan" | "character_plan" = "gm_reasoning",
+	modelOverride?: string
 ): Promise<string> {
 	const messages = [
 			...stripStateBlocksFromMessages(request.cleanedMessages),
@@ -216,14 +215,16 @@ export async function runPlannerStage(
 			}
 		];
 	const options = sanitizeStageGenerationOptions(request, {
-			includeReasoning: false,
+			includeReasoning: request.includeReasoning,
+			reasoning_effort: request.reasoningEffort || "high",
+			showReasoning: request.showReasoning,
 			temperature: 1,
 			top_p: 0.8
 		});
 
 	let completion: Awaited<ReturnType<typeof services.geminiClient.getCompletion>>;
 	try {
-		completion = await services.geminiClient.getCompletion(request.model, prompt.system, messages, options);
+		completion = await services.geminiClient.getCompletion(modelOverride || request.model, prompt.system, messages, options);
 	} catch (error) {
 		logRpError(debugId, stageName, "completion_error", error);
 		throw error;
@@ -236,13 +237,13 @@ export async function runPlannerStage(
 		tool_calls: completion.tool_calls
 	});
 
-	const reasoningBlock = extractGmReasoningBlockFromOutput(completion.content);
+	const reasoningBlock = extractTaggedPlanningBlockFromOutput(completion.content, outputTag);
 	if (!reasoningBlock) {
 		logRpDebug(debugId, stageName, "parse_error", {
-			message: "Planner step did not return a <gm_reasoning> block.",
+			message: `Planner step did not return a <${outputTag}> block.`,
 			content: completion.content
 		});
-		throw new Error("Planner step did not return a <gm_reasoning> block.");
+		throw new Error(`Planner step did not return a <${outputTag}> block.`);
 	}
 
 	return reasoningBlock;
@@ -252,7 +253,6 @@ export async function runProseStage(
 	services: ChatServices,
 	request: PreparedChatCompletionRequest,
 	prompt: StagePrompt,
-	stateBlock: string,
 	debugId = createRpDebugId()
 ): Promise<string> {
 	const messages = [
@@ -263,7 +263,9 @@ export async function runProseStage(
 			}
 		];
 	const options = sanitizeStageGenerationOptions(request, {
-			includeReasoning: false,
+			includeReasoning: request.includeReasoning,
+			reasoning_effort: request.reasoningEffort || "high",
+			showReasoning: request.showReasoning,
 			temperature: request.generationOptions.temperature ?? 0.75,
 			top_p: request.generationOptions.top_p ?? 0.95
 		});
@@ -276,8 +278,7 @@ export async function runProseStage(
 		throw error;
 	}
 
-	const finalOutput = appendExactStateBlock(completion.content, stateBlock);
-	return finalOutput;
+	return stripPlanningBlocksFromText(stripStateBlocksFromText(completion.content));
 }
 
 export async function runCustomProseStage(
@@ -294,7 +295,9 @@ export async function runCustomProseStage(
 			}
 		];
 	const options = sanitizeStageGenerationOptions(request, {
-			includeReasoning: false,
+			includeReasoning: request.includeReasoning,
+			reasoning_effort: request.reasoningEffort || "high",
+			showReasoning: request.showReasoning,
 			temperature: request.generationOptions.temperature ?? 0.75,
 			top_p: request.generationOptions.top_p ?? 0.95
 		});
@@ -307,7 +310,7 @@ export async function runCustomProseStage(
 		throw error;
 	}
 
-	const finalOutput = stripStateBlocksFromText(stripGmReasoningBlocksFromText(completion.content));
+	const finalOutput = stripStateBlocksFromText(stripPlanningBlocksFromText(stripGmReasoningBlocksFromText(completion.content)));
 	return finalOutput;
 }
 
@@ -343,23 +346,46 @@ export async function runNormalRpTurn(
 	const debugId = createRpDebugId();
 	logRpDebug(debugId, "normal_turn", "start", {
 		model: request.model,
+		gmPlannerModel: request.rpGmPlannerModel || DEFAULT_RP_GM_PLANNER_MODEL,
+		stateUpdateModel: request.rpStateUpdateModel || request.model,
 		messageCount: request.messages.length,
 		cleanedMessageCount: request.cleanedMessages.length,
 		rpMode: request.rpMode,
 		stream: request.stream
 	});
 
-	const stateBlock = await runStateUpdateForRequest(services, request, debugId);
+	const previousStateBlock = extractPreviousStateBlock(request.otherMessages);
+	if (!previousStateBlock) {
+		logRpDebug(debugId, "state_update", "missing_previous_state", {
+			message: "State update requires a previous <state> block."
+		});
+		throw new Error("State update requires a previous <state> block.");
+	}
+
 	const initialData = parseInitialPrompt(request.systemPrompt);
 	const rules = parseRules(relationshipRulesContent);
-	const updatedState = parseStateBlock(stateBlock);
-	const interpretedState = interpretState(updatedState, rules);
+	const previousState = extractPreviousState(request.otherMessages);
+	const interpretedState = interpretState(previousState, rules);
+	const startingSituation = buildCurrentSituation(interpretedState);
 	const sceneMode = getSceneMode(interpretedState);
-	const plannerPrompt = buildPlannerPrompt(initialData, interpretedState, sceneMode);
-	const reasoningBlock = await runPlannerStage(services, request, plannerPrompt, debugId);
-	const prosePrompt = buildProsePrompt(initialData, interpretedState, sceneMode, reasoningBlock);
+	const gmPlannerPrompt = buildGmPlannerPrompt(initialData, interpretedState);
+	const gmPlanBlock = await runPlannerStage(
+		services,
+		request,
+		gmPlannerPrompt,
+		debugId,
+		"gm_planner",
+		"gm_plan",
+		request.rpGmPlannerModel || DEFAULT_RP_GM_PLANNER_MODEL
+	);
+	const plannerPrompt = buildPlannerPrompt(initialData, interpretedState, sceneMode, gmPlanBlock);
+	const characterPlanBlock = await runPlannerStage(services, request, plannerPrompt, debugId, "character_planner", "character_plan");
+	const prosePrompt = buildProsePrompt(initialData, interpretedState, sceneMode, gmPlanBlock, characterPlanBlock);
+	const proseOutput = await runProseStage(services, request, prosePrompt, debugId);
 
-	const finalOutput = await runProseStage(services, request, prosePrompt, stateBlock, debugId);
+	const statePrompt = buildStateUpdatePrompt(previousStateBlock, previousState, startingSituation, gmPlanBlock, characterPlanBlock);
+	const stateBlock = await runStateUpdateStage(services, request, statePrompt, proseOutput, debugId);
+	const finalOutput = appendExactStateBlock(proseOutput, stateBlock);
 	logRpDebug(debugId, "normal_turn", "done", {
 		outputLength: finalOutput.length
 	});

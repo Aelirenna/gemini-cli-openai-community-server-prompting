@@ -30,6 +30,8 @@ export interface PreparedChatCompletionRequest {
 	includeReasoning: boolean;
 	reasoningEffort?: EffortLevel;
 	rpMode: RpMode;
+	rpGmPlannerModel?: string;
+	rpStateUpdateModel?: string;
 	generationOptions: ChatGenerationOptions;
 	tools?: Tool[];
 	toolChoice?: ToolChoice;

@@ -21,6 +21,7 @@ export type WorldState = {
 	characters: {
 		[charName: string]: CharacterState;
 	};
+	threads?: string;
 };
 
 export type Rules = {

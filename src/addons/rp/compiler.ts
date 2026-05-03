@@ -146,6 +146,7 @@ export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
 					triggered_milestones?: string[];
 				}
 			>;
+			threads?: string;
 		};
 
 		if (parsedJson.date_time) {
@@ -177,6 +178,10 @@ export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
 					triggered_milestones: charData.triggered_milestones
 				};
 			}
+		}
+
+		if (typeof parsedJson.threads === "string") {
+			worldState.threads = parsedJson.threads;
 		}
 	} catch (error) {
 		console.error("--- DEBUG: Failed to parse state JSON. Content was:", stateMatch[1], "Error:", error);
@@ -223,6 +228,10 @@ export const buildCurrentSituation = (interpretedState: WorldState): string => {
 
 	if (interpretedState.dateTime) {
 		situation += `In-world time: ${interpretedState.dateTime}\n`;
+	}
+
+	if (interpretedState.threads) {
+		situation += `Long-story threads (memory, not a command queue): ${interpretedState.threads}\n`;
 	}
 
 	if (Object.keys(interpretedState.characters).length > 0) {

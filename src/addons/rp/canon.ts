@@ -4,12 +4,15 @@ const CANON_HEADING_REGEX = /^#\s+(.+)$/gm;
 const PLANNER_CANON_SECTIONS = [
 	"Contract",
 	"Main",
+	"Role separation",
 	"Metacare",
 	"The long game",
 	"Playing & portrayal",
 	"Prohibitions",
 	"Physical logic"
 ];
+const GM_PLANNER_CANON_SECTIONS = ["Contract", "Main", "Role separation", "Metacare", "The long game", "Prohibitions"];
+const CHARACTER_PLANNER_CANON_SECTIONS = ["Contract", "Main", "Metacare", "Playing & portrayal", "Prohibitions"];
 const PROSE_CANON_SECTIONS = ["Contract", "Writing", "Physical logic", "Playing & portrayal", "Prohibitions"];
 const STATE_UPDATE_CANON_SECTIONS = ["Contract", "Playing & portrayal", "Prohibitions"];
 
@@ -37,6 +40,15 @@ export function buildCanonSections(titles: string[]): string {
 
 export function buildPlannerCanon(sceneMode: "general" | "sex"): string {
 	const sections = sceneMode === "sex" ? [...PLANNER_CANON_SECTIONS, "NSFW"] : PLANNER_CANON_SECTIONS;
+	return buildCanonSections(sections);
+}
+
+export function buildGmPlannerCanon(): string {
+	return buildCanonSections(GM_PLANNER_CANON_SECTIONS);
+}
+
+export function buildCharacterPlannerCanon(sceneMode: "general" | "sex"): string {
+	const sections = sceneMode === "sex" ? [...CHARACTER_PLANNER_CANON_SECTIONS, "NSFW"] : CHARACTER_PLANNER_CANON_SECTIONS;
 	return buildCanonSections(sections);
 }
 

@@ -1,0 +1,6 @@
+<gm_plan_request>
+Write the GM/world/story plan for the next RP response based on the exact prompt sections and RP data provided in this same user message.
+Use the provided prompt sections directly.
+Do not write prose.
+Output exactly one <gm_plan> block and nothing else.
+</gm_plan_request>

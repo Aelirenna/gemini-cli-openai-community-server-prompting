@@ -19,6 +19,8 @@ export interface Env {
 	ENABLE_REAL_THINKING?: string; // Optional flag to enable real Gemini thinking output (set to "true" to enable)
 	STREAM_THINKING_AS_CONTENT?: string; // Optional flag to stream thinking as content with <thinking> tags (set to "true" to enable)
 	DEFAULT_RP_MODE?: string; // Optional default RP addon mode when request does not provide rp_mode
+	RP_GM_PLANNER_MODEL?: string; // Optional RP GM planner-only model override
+	RP_STATE_UPDATE_MODEL?: string; // Optional RP state_update-only model override
 	ENABLE_AUTO_MODEL_SWITCHING?: string; // Optional flag to enable automatic fallback from pro to flash on 429 errors (set to "true" to enable)
 	GEMINI_MODERATION_HARASSMENT_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_HATE_SPEECH_THRESHOLD?: SafetyThreshold;

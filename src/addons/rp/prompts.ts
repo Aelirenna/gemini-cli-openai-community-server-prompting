@@ -1,4 +1,4 @@
-import { buildPlannerCanon, buildProseCanon, buildStateUpdateCanon } from "./canon";
+import { buildCharacterPlannerCanon, buildGmPlannerCanon, buildPlannerCanon, buildProseCanon } from "./canon";
 import { buildCurrentSituation } from "./compiler";
 import customCotPrompt from "./prompt_parts/custom_cot.txt";
 import customPlannerStagePrompt from "./prompt_parts/custom_planner_stage.txt";
@@ -6,19 +6,14 @@ import customPrompt from "./prompt_parts/custom_prompt.txt";
 import customProsePrompt from "./prompt_parts/custom_prose.txt";
 import customProseStagePrompt from "./prompt_parts/custom_prose_stage.txt";
 import initialStatePrompt from "./prompt_parts/initial_state.txt";
+import plannerGmReasoningPrompt from "./prompt_parts/planner_gm_reasoning.txt";
 import oocAnalysisPrompt from "./prompt_parts/ooc_analysis.txt";
-import plannerNsfwScenePrompt from "./prompt_parts/planner_nsfw_scene.txt";
 import plannerReasoningPrompt from "./prompt_parts/planner_reasoning.txt";
-import plannerStoryMovementPrompt from "./prompt_parts/planner_story_movement.txt";
 import proseExecutionPrompt from "./prompt_parts/prose_execution.txt";
 import stateUpdatePrompt from "./prompt_parts/state_update.txt";
 import type { InitialPromptData, StagePrompt, WorldState } from "./types";
 
 export type SceneMode = "general" | "sex";
-
-function fillTemplate(template: string, values: Record<string, string>): string {
-	return Object.entries(values).reduce((result, [key, value]) => result.replaceAll(`{{${key}}}`, value), template);
-}
 
 function collectReferenceParts(initialData: InitialPromptData): string[] {
 	const referenceParts: string[] = [];
@@ -41,6 +36,10 @@ function collectReferenceParts(initialData: InitialPromptData): string[] {
 function buildReferenceMaterial(initialData: InitialPromptData): string {
 	const referenceParts = collectReferenceParts(initialData);
 	return referenceParts.length > 0 ? `<reference_material>\n${referenceParts.join("\n\n")}\n</reference_material>` : "";
+}
+
+function buildPlannerPromptSections(plannerCanon: string): string {
+	return `<planner_prompt_sections>\n<planner_canon>\n${plannerCanon}\n</planner_canon>\n</planner_prompt_sections>`;
 }
 
 export function buildInitialStatePrompt(initialData: InitialPromptData, relationshipRules: string, traitDefinitions: string): StagePrompt {
@@ -119,28 +118,44 @@ export function getSceneMode(interpretedState: WorldState): SceneMode {
 }
 
 export function buildStateUpdatePrompt(
-	initialData: InitialPromptData,
 	previousStateBlock: string,
 	previousState: WorldState,
-	previousSituation: string
+	startingSituation: string,
+	gmPlanBlock: string,
+	characterPlanBlock: string
 ): StagePrompt {
-	const systemParts = [
-		`<state_update_canon>\n${buildStateUpdateCanon()}\n</state_update_canon>`
-	];
-	const referenceMaterial = buildReferenceMaterial(initialData);
-	if (referenceMaterial) {
-		systemParts.push(referenceMaterial);
-	}
-
 	const userParts = [
-		stateUpdatePrompt,
 		`<previous_technical_state>\n${previousStateBlock}\n</previous_technical_state>`,
-		`<decoded_previous_state>\n${JSON.stringify(previousState)}\n</decoded_previous_state>`
+		`<decoded_previous_state>\n${JSON.stringify(previousState)}\n</decoded_previous_state>`,
+		startingSituation,
+		`<approved_gm_plan>\n${gmPlanBlock}\n</approved_gm_plan>`,
+		`<approved_character_plan>\n${characterPlanBlock}\n</approved_character_plan>`,
+		"<state_finalizer_request>\nReturn exactly one updated <state> block for the written assistant prose immediately above.\n</state_finalizer_request>"
 	];
 
-	if (previousSituation) {
-		userParts.push(previousSituation);
-	}
+	return {
+		system: stateUpdatePrompt,
+		user: userParts.filter((part) => part.trim().length > 0).join("\n\n")
+	};
+}
+
+export function buildPlannerPrompt(
+	initialData: InitialPromptData,
+	interpretedState: WorldState,
+	sceneMode: SceneMode,
+	gmPlanBlock: string
+): StagePrompt {
+	const referenceMaterial = buildReferenceMaterial(initialData);
+	const systemParts = referenceMaterial ? [referenceMaterial] : [];
+	const plannerPromptSections = buildPlannerPromptSections(buildCharacterPlannerCanon(sceneMode));
+	const currentSituation = buildCurrentSituation(interpretedState);
+	const userParts = [
+		plannerReasoningPrompt,
+		plannerPromptSections,
+		currentSituation,
+		`<approved_gm_plan>\n${gmPlanBlock}\n</approved_gm_plan>`,
+		"<final_instructions>\nOutput exactly one <character_plan> block and nothing else.\n</final_instructions>"
+	].filter((part) => part.trim().length > 0);
 
 	return {
 		system: systemParts.join("\n\n"),
@@ -148,26 +163,19 @@ export function buildStateUpdatePrompt(
 	};
 }
 
-export function buildPlannerPrompt(
+export function buildGmPlannerPrompt(
 	initialData: InitialPromptData,
-	interpretedState: WorldState,
-	sceneMode: SceneMode
+	interpretedState: WorldState
 ): StagePrompt {
-	const systemParts = [`<planner_canon>\n${buildPlannerCanon(sceneMode)}\n</planner_canon>`];
 	const referenceMaterial = buildReferenceMaterial(initialData);
-	if (referenceMaterial) {
-		systemParts.push(referenceMaterial);
-	}
-
+	const systemParts = referenceMaterial ? [referenceMaterial] : [];
+	const plannerPromptSections = buildPlannerPromptSections(buildGmPlannerCanon());
 	const currentSituation = buildCurrentSituation(interpretedState);
-	const scenePlanSection = sceneMode === "sex" ? plannerNsfwScenePrompt : plannerStoryMovementPrompt;
-	const plannerReasoning = fillTemplate(plannerReasoningPrompt, {
-		SCENE_PLAN_SECTION: scenePlanSection
-	});
 	const userParts = [
+		plannerGmReasoningPrompt,
+		plannerPromptSections,
 		currentSituation,
-		plannerReasoning,
-		"<final_instructions>\nOutput exactly one <gm_reasoning> block and nothing else.\n</final_instructions>"
+		"<final_instructions>\nOutput exactly one <gm_plan> block and nothing else.\n</final_instructions>"
 	].filter((part) => part.trim().length > 0);
 
 	return {
@@ -180,7 +188,8 @@ export function buildProsePrompt(
 	initialData: InitialPromptData,
 	interpretedState: WorldState,
 	sceneMode: SceneMode,
-	reasoningBlock: string
+	gmPlanBlock: string,
+	characterPlanBlock: string
 ): StagePrompt {
 	const systemParts = [`<prose_canon>\n${buildProseCanon(sceneMode)}\n</prose_canon>`];
 	const referenceMaterial = buildReferenceMaterial(initialData);
@@ -192,7 +201,7 @@ export function buildProsePrompt(
 	const userParts = [
 		proseExecutionPrompt,
 		currentSituation,
-		`<approved_plan>\n${reasoningBlock}\n</approved_plan>`
+		`<approved_plan>\n<approved_gm_plan>\n${gmPlanBlock}\n</approved_gm_plan>\n\n<approved_character_plan>\n${characterPlanBlock}\n</approved_character_plan>\n</approved_plan>`
 	].filter((part) => part.trim().length > 0);
 
 	return {
