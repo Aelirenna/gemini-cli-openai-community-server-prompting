@@ -237,6 +237,9 @@ async function testNormalPipeline(): Promise<void> {
 
 	const gmPlannerUserPayload = contentToText(calls[0].messages[calls[0].messages.length - 1].content);
 	expect(gmPlannerUserPayload.includes("<gm_plan_request>"), "GM planner must receive plan request in user payload");
+	expect(gmPlannerUserPayload.includes("This step is not the character planner."), "GM planner must receive hard character-boundary instruction");
+	expect(gmPlannerUserPayload.includes("Forbidden section topics inside <gm_plan>:"), "GM planner must receive forbidden section topics");
+	expect(gmPlannerUserPayload.includes("If the scene is sexual, the GM plan may name only external circumstances and scene phase."), "GM planner must receive NSFW boundary instruction");
 	expect(gmPlannerUserPayload.includes("<planner_prompt_sections>"), "GM planner must receive prompt sections in user payload");
 	expect(gmPlannerUserPayload.includes("<planner_canon>"), "GM planner must receive planner canon in user payload");
 	expect(gmPlannerUserPayload.includes("# Role separation"), "GM planner must receive full canon sections in user payload");

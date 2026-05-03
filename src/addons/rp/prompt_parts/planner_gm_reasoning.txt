@@ -1,6 +1,20 @@
 <gm_plan_request>
-Write the GM/world/story plan for the next RP response based on the exact prompt sections and RP data provided in this same user message.
+Write only the GM/world/story plan for the next RP response based on the exact prompt sections and RP data provided in this same user message.
+This step is not the character planner. It must not plan {{char}}'s internal state, desire, dialogue, pet names, touch, body movement, sexual action, kink execution, emotional reaction, or relationship behavior.
+
+The GM plan may decide only the external story layer: time, location, environment, public/private conditions, world pressure, NPCs, institutions, consequences, risks, opportunities, scene phase, and what external facts become available to the next steps.
+If the scene is sexual, the GM plan may name only external circumstances and scene phase. Do not write anatomy, arousal handling, stripping, checking, scenting, breeding, size kink, praise, pet names, or any concrete sexual move for {{char}}. Character sexual behavior belongs only to the character planner and prose.
+
+Forbidden section topics inside <gm_plan>:
+- Character Internal State
+- Dialogue & Interaction
+- Physical Movement
+- Kink Integration
+- what {{char}} will say
+- what {{char}} will do with their hands/body/mouth
+- how {{char}} feels about {{user}}
+
 Use the provided prompt sections directly.
 Do not write prose.
-Output exactly one <gm_plan> block and nothing else.
+Output exactly one <gm_plan> block and nothing else. Inside it, use GM-only story/world terms. If no outside/world movement belongs in this turn, say that the GM layer should stay quiet and leave character movement to the character planner.
 </gm_plan_request>
