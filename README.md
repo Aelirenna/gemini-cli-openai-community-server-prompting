@@ -12,7 +12,7 @@ Install and deploy this fork the same way as the original project. The differenc
 ## RP Modes
 
 - `none` - default proxy behavior. No RP addon is used.
-- `my` - custom two-stage RP flow: planner/CoT first, then prose generated from that plan.
+- `my` - custom two-stage RP flow: planner first, then prose generated from that plan. OOC is supported.
 - `yaoshi` - structured RP flow with state handling, planner/CoT, prose, OOC handling, and initial state generation.
 
 The default mode is `none` unless `DEFAULT_RP_MODE` is configured in the Worker environment.
@@ -21,8 +21,8 @@ The default mode is `none` unless `DEFAULT_RP_MODE` is configured in the Worker 
 
 The `my` mode is intentionally minimal. Edit these placeholder files:
 
-- `src/addons/rp/prompt_parts/custom_prompt.txt`
-- `src/addons/rp/prompt_parts/custom_cot.txt`
+- `src/addons/rp/prompt_parts/custom_system_prompt.txt`
+- `src/addons/rp/prompt_parts/custom_planner_directive.txt`
 - `src/addons/rp/prompt_parts/custom_prose.txt`
 
 The stage wiring stays in code, while the custom prompt content stays in separate text files.
@@ -41,7 +41,7 @@ Allowed values:
 - `my`
 - `yaoshi`
 
-For per-chat switching, add a system prompt command:
+To override the Worker default for one chat, add this to that chat's system prompt:
 
 ```text
 rp_mode=my
