@@ -10,6 +10,7 @@ import { ChatHttpError, ChatRouteContext, ChatServices, PreparedChatCompletionRe
 
 const REASONING_BLOCK_REGEX = /<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>\s*/g;
 const RP_MODES = new Set<RpMode>(["none", "my", "yaoshi"]);
+const EFFORT_LEVELS = new Set<EffortLevel>(["none", "low", "medium", "high"]);
 const DEFAULT_RP_GM_PLANNER_MODEL = "gemini-3-flash-preview";
 
 function parseRpMode(value: string | undefined): RpMode | undefined {
@@ -23,6 +24,19 @@ function parseRpMode(value: string | undefined): RpMode | undefined {
 	}
 
 	return normalized as RpMode;
+}
+
+function parseReasoningEffort(value: string | undefined): EffortLevel | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	const normalized = value.toLowerCase();
+	if (!EFFORT_LEVELS.has(normalized as EffortLevel)) {
+		throw new ChatHttpError(`Invalid REASONING_EFFORT '${value}'. Expected one of: none, low, medium, high.`, 400);
+	}
+
+	return normalized as EffortLevel;
 }
 
 function stripThinkingBlocks(messages: ChatCompletionRequest["messages"]): ChatCompletionRequest["messages"] {
@@ -108,7 +122,8 @@ export function buildPreparedChatRequest(body: ChatCompletionRequest, env: Env):
 		(effortFromPrompt as EffortLevel | null) ||
 		normalizedBody.reasoning_effort ||
 		normalizedBody.extra_body?.reasoning_effort ||
-		normalizedBody.model_params?.reasoning_effort;
+		normalizedBody.model_params?.reasoning_effort ||
+		parseReasoningEffort(env.REASONING_EFFORT);
 	const rpMode =
 		rpModeFromPrompt ||
 		parseRpMode(normalizedBody.rp_mode) ||
@@ -120,6 +135,7 @@ export function buildPreparedChatRequest(body: ChatCompletionRequest, env: Env):
 	const isRealThinkingEnabled = env.ENABLE_REAL_THINKING === "true";
 	const includeReasoning = reasoningEffort ? reasoningEffort !== "none" : isRealThinkingEnabled;
 	const cleanedMessages = cleanContext ? stripThinkingBlocks(otherMessages) : otherMessages;
+	const rpPlannerModel = env.RP_PLANNER_MODEL?.trim() || undefined;
 	const rpGmPlannerModel = env.RP_GM_PLANNER_MODEL?.trim() || DEFAULT_RP_GM_PLANNER_MODEL;
 	const rpStateUpdateModel = env.RP_STATE_UPDATE_MODEL?.trim() || undefined;
 
@@ -136,6 +152,7 @@ export function buildPreparedChatRequest(body: ChatCompletionRequest, env: Env):
 		includeReasoning,
 		reasoningEffort: reasoningEffort || undefined,
 		rpMode,
+		rpPlannerModel,
 		rpGmPlannerModel,
 		rpStateUpdateModel,
 		generationOptions: {
@@ -168,6 +185,16 @@ export function validatePreparedChatRequest(request: PreparedChatCompletionReque
 		if (!stateModelValidation.isValid) {
 			throw new ChatHttpError(
 				stateModelValidation.error || `RP state update model '${request.rpStateUpdateModel}' validation failed`,
+				400
+			);
+		}
+	}
+
+	if (request.rpPlannerModel) {
+		const plannerModelValidation = validateModel(request.rpPlannerModel);
+		if (!plannerModelValidation.isValid) {
+			throw new ChatHttpError(
+				plannerModelValidation.error || `RP planner model '${request.rpPlannerModel}' validation failed`,
 				400
 			);
 		}

@@ -321,6 +321,7 @@ export async function runCustomRpTurn(
 	const debugId = createRpDebugId();
 	logRpDebug(debugId, "custom_turn", "start", {
 		model: request.model,
+		plannerModel: request.rpPlannerModel || request.model,
 		messageCount: request.messages.length,
 		cleanedMessageCount: request.cleanedMessages.length,
 		rpMode: request.rpMode,
@@ -329,7 +330,15 @@ export async function runCustomRpTurn(
 
 	const initialData = parseInitialPrompt(request.systemPrompt);
 	const plannerPrompt = buildCustomPlannerPrompt(initialData);
-	const reasoningBlock = await runPlannerStage(services, request, plannerPrompt, debugId, "custom_planner");
+	const reasoningBlock = await runPlannerStage(
+		services,
+		request,
+		plannerPrompt,
+		debugId,
+		"custom_planner",
+		"gm_reasoning",
+		request.rpPlannerModel
+	);
 	const prosePrompt = buildCustomProsePrompt(initialData, reasoningBlock);
 	const finalOutput = await runCustomProseStage(services, request, prosePrompt, debugId);
 

@@ -78,6 +78,7 @@ function makeRequest(messages: ChatMessage[], rpMode: "my" | "yaoshi" = "yaoshi"
 		cleanContext: true,
 		includeReasoning: false,
 		rpMode,
+		rpPlannerModel: rpMode === "my" ? "gemini-3-flash-preview" : undefined,
 		generationOptions: {
 			temperature: 0.7,
 			top_p: 0.9,
@@ -310,6 +311,8 @@ async function testCustomPipeline(): Promise<void> {
 	expect(calls.length === 2, `custom mode expected 2 stage calls, got ${calls.length}`);
 	expect(getStage(calls[0].system, calls[0].messages) === "custom_planner", "custom first call must be planner");
 	expect(getStage(calls[1].system, calls[1].messages) === "custom_prose", "custom second call must be prose");
+	expect(calls[0].model === "gemini-3-flash-preview", "custom planner must use RP_PLANNER_MODEL override");
+	expect(calls[1].model === "gemini-fixture", "custom prose must use request model");
 
 	for (const [index, stage] of ["custom_planner", "custom_prose"].entries()) {
 		expectHistoryIsStateClean(calls[index], stage);

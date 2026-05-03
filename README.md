@@ -47,4 +47,11 @@ To override the Worker default for one chat, add this to that chat's system prom
 rp_mode=my
 ```
 
+Optional RP Worker variables:
+
+- `REASONING_EFFORT` - default thinking effort.
+- `RP_PLANNER_MODEL` - planner model override for `my` mode.
+- `RP_GM_PLANNER_MODEL` - GM planner model override for `yaoshi` mode.
+- `RP_STATE_UPDATE_MODEL` - state update model override for `yaoshi` mode.
+
 `wrangler.toml` is kept aligned with the upstream project. Configure your own Cloudflare account, KV namespace, project settings, Worker variables, and secrets the same way as in the original setup.
