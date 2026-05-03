@@ -1,5 +1,5 @@
 import { buildCharacterPlannerCanon, buildGmPlannerCanon, buildPlannerCanon, buildProseCanon } from "./canon";
-import { buildCurrentSituation } from "./compiler";
+import { buildCurrentSituation, buildGmCurrentSituation } from "./compiler";
 import customPlannerDirectivePrompt from "./prompt_parts/custom_planner_directive.txt";
 import customPlannerStagePrompt from "./prompt_parts/custom_planner_stage.txt";
 import customProsePrompt from "./prompt_parts/custom_prose.txt";
@@ -190,7 +190,7 @@ export function buildGmPlannerPrompt(
 	const referenceMaterial = buildReferenceMaterial(initialData);
 	const systemParts = referenceMaterial ? [referenceMaterial] : [];
 	const plannerPromptSections = buildPlannerPromptSections(buildGmPlannerCanon());
-	const currentSituation = buildCurrentSituation(interpretedState);
+	const currentSituation = buildGmCurrentSituation(interpretedState);
 	const userParts = [
 		plannerGmReasoningPrompt,
 		plannerPromptSections,

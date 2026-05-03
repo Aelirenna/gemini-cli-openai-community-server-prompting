@@ -1,6 +1,13 @@
 import type { ChatMessage } from "../src/types";
 import type { ChatServices, PreparedChatCompletionRequest } from "../src/core/chat/types";
-import { buildCurrentSituation, extractPreviousState, interpretState, parseRules, relationshipRulesContent } from "../src/addons/rp/compiler";
+import {
+	buildCurrentSituation,
+	buildGmCurrentSituation,
+	extractPreviousState,
+	interpretState,
+	parseRules,
+	relationshipRulesContent
+} from "../src/addons/rp/compiler";
 import { rpAddon } from "../src/addons/rp";
 import { runCustomRpTurn, runNormalRpTurn } from "../src/addons/rp/runtime";
 
@@ -239,6 +246,10 @@ async function testNormalPipeline(): Promise<void> {
 		gmPlannerUserPayload.includes("Long-story threads (memory, not a command queue):"),
 		"GM planner must receive story threads in current_situation"
 	);
+	expect(gmPlannerUserPayload.includes("- Location: Garden"), "GM planner must receive location in current_situation");
+	expect(!gmPlannerUserPayload.includes("Attitude towards the {{user}}"), "GM planner must not receive relationship meaning");
+	expect(!gmPlannerUserPayload.includes("Traits:"), "GM planner must not receive traits");
+	expect(!gmPlannerUserPayload.includes("THEMATIC FOCUS"), "GM planner must not receive milestone focus");
 	expect(gmPlannerUserPayload.includes("<gm_plan>"), "GM planner must receive GM plan structure");
 	expect(!gmPlannerUserPayload.includes("<previous_technical_state>"), "GM planner must not receive previous technical state");
 	expect(!gmPlannerUserPayload.includes("<decoded_previous_state>"), "GM planner must not receive decoded previous state");
@@ -428,12 +439,16 @@ function testPregnancyCurrentSituation(): void {
 		}
 	]);
 	const legacySituation = buildCurrentSituation(interpretState(legacyState, rules));
+	const legacyGmSituation = buildGmCurrentSituation(interpretState(legacyState, rules));
 	expect(
 		legacyState.characters.Yaoshi.PR?.discovered === false,
 		"legacy pr=Y must normalize to undiscovered pregnancy"
 	);
 	expect(legacySituation.includes("conception/pregnancy exists as technical GM truth"), "legacy pr=Y must appear in current_situation");
 	expect(legacySituation.includes("Characters do not automatically know this"), "hidden pregnancy must block automatic knowledge");
+	expect(legacyGmSituation.includes("conception/pregnancy exists as technical GM truth"), "GM current_situation must receive pregnancy");
+	expect(!legacyGmSituation.includes("Attitude towards the {{user}}"), "GM current_situation must not receive relationship meaning");
+	expect(!legacyGmSituation.includes("Traits:"), "GM current_situation must not receive traits");
 
 	const discoveredState = extractPreviousState([
 		{
@@ -445,6 +460,18 @@ function testPregnancyCurrentSituation(): void {
 	const discoveredSituation = buildCurrentSituation(interpretState(discoveredState, rules));
 	expect(discoveredSituation.includes("known in played reality"), "discovered pregnancy must be visible");
 	expect(discoveredSituation.includes("Discovered at: Day 40"), "discovered_at must be included");
+
+	const sexState = extractPreviousState([
+		{
+			role: "assistant",
+			content:
+				'<state>{"date_time":"Night","characters":{"Yaoshi":{"r":120,"rf":"LV","pr":null,"loc":"Room","sex":true,"traits":"Calm","triggered_milestones":[]}}}</state>'
+		}
+	]);
+	const sexGmSituation = buildGmCurrentSituation(interpretState(sexState, rules));
+	expect(sexGmSituation.includes("Sex scene: active"), "GM current_situation must receive sex scene marker");
+	expect(!sexGmSituation.includes("Attitude towards the {{user}}"), "GM sex current_situation must not receive relationship meaning");
+	expect(!sexGmSituation.includes("Traits:"), "GM sex current_situation must not receive traits");
 }
 
 async function expectRejects(action: () => Promise<unknown>, expectedMessage: string): Promise<void> {

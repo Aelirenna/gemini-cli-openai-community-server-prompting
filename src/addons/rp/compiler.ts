@@ -222,8 +222,26 @@ export const parseInitialPrompt = (systemContent: string): InitialPromptData => 
 	return data;
 };
 
-export const buildCurrentSituation = (interpretedState: WorldState): string => {
-	const traitDefs = parseTraitDefinitions(traitDefinitions);
+function formatPregnancyStatus(charState: CharacterState): string | null {
+	if (charState.PR?.isPregnant !== "Y") {
+		return null;
+	}
+
+	const target = charState.PR.target ? ` Target: ${charState.PR.target}.` : "";
+	const conceivedAt = charState.PR.conceived_at ? ` Conceived around: ${charState.PR.conceived_at}.` : "";
+	const discoveredAt = charState.PR.discovered_at ? ` Discovered at: ${charState.PR.discovered_at}.` : "";
+	if (charState.PR.discovered) {
+		return `Pregnancy: conception/pregnancy exists as technical GM truth and is known in played reality.${target}${conceivedAt}${discoveredAt}`;
+	}
+
+	return `Pregnancy: conception/pregnancy exists as technical GM truth, but it has not been discovered in played reality.${target}${conceivedAt} Characters do not automatically know this from the technical state. After enough natural in-world time passes, the story should create a plausible discovery path instead of forgetting it or revealing it immediately.`;
+}
+
+function wrapCurrentSituation(situation: string): string {
+	return situation.trim() ? `<current_situation>\n${situation.trim()}\n</current_situation>` : "";
+}
+
+function appendSharedSituationHeader(interpretedState: WorldState): string {
 	let situation = "";
 
 	if (interpretedState.dateTime) {
@@ -233,6 +251,13 @@ export const buildCurrentSituation = (interpretedState: WorldState): string => {
 	if (interpretedState.threads) {
 		situation += `Long-story threads (memory, not a command queue): ${interpretedState.threads}\n`;
 	}
+
+	return situation;
+}
+
+export const buildCurrentSituation = (interpretedState: WorldState): string => {
+	const traitDefs = parseTraitDefinitions(traitDefinitions);
+	let situation = appendSharedSituationHeader(interpretedState);
 
 	if (Object.keys(interpretedState.characters).length > 0) {
 		for (const charName in interpretedState.characters) {
@@ -244,15 +269,9 @@ export const buildCurrentSituation = (interpretedState: WorldState): string => {
 			if (charState.location) {
 				statusString += `\n- Location: ${charState.location}`;
 			}
-			if (charState.PR?.isPregnant === "Y") {
-				const target = charState.PR.target ? ` Target: ${charState.PR.target}.` : "";
-				const conceivedAt = charState.PR.conceived_at ? ` Conceived around: ${charState.PR.conceived_at}.` : "";
-				const discoveredAt = charState.PR.discovered_at ? ` Discovered at: ${charState.PR.discovered_at}.` : "";
-				if (charState.PR.discovered) {
-					statusString += `\n- Pregnancy: conception/pregnancy exists as technical GM truth and is known in played reality.${target}${conceivedAt}${discoveredAt}`;
-				} else {
-					statusString += `\n- Pregnancy: conception/pregnancy exists as technical GM truth, but it has not been discovered in played reality.${target}${conceivedAt} Characters do not automatically know this from the technical state. After enough natural in-world time passes, the story should create a plausible discovery path instead of forgetting it or revealing it immediately.`;
-				}
+			const pregnancyStatus = formatPregnancyStatus(charState);
+			if (pregnancyStatus) {
+				statusString += `\n- ${pregnancyStatus}`;
 			}
 			if (charState.traits) {
 				let traitsWithDefs = charState.traits;
@@ -272,5 +291,32 @@ export const buildCurrentSituation = (interpretedState: WorldState): string => {
 		}
 	}
 
-	return situation.trim() ? `<current_situation>\n${situation.trim()}\n</current_situation>` : "";
+	return wrapCurrentSituation(situation);
+};
+
+export const buildGmCurrentSituation = (interpretedState: WorldState): string => {
+	let situation = appendSharedSituationHeader(interpretedState);
+
+	if (Object.keys(interpretedState.characters).length > 0) {
+		for (const charName in interpretedState.characters) {
+			const charState = interpretedState.characters[charName];
+			const statusLines: string[] = [];
+			if (charState.location) {
+				statusLines.push(`Location: ${charState.location}`);
+			}
+			const pregnancyStatus = formatPregnancyStatus(charState);
+			if (pregnancyStatus) {
+				statusLines.push(pregnancyStatus);
+			}
+			if (charState.is_sex_scene) {
+				statusLines.push("Sex scene: active");
+			}
+
+			if (statusLines.length > 0) {
+				situation += `For ${charName}:\n- ${statusLines.join("\n- ")}\n`;
+			}
+		}
+	}
+
+	return wrapCurrentSituation(situation);
 };
