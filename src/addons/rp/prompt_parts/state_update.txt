@@ -62,8 +62,12 @@ Field update rules:
 - `LV` = romantic / sexual lens
 - ask: did the current turn, in context of prior history, actually shift the character's internal lens?
 - ask: is there now a real desire to approach the user romantically / sexually, or did that desire fade out?
+- `FR` is not a permanent route lock and not a refuge from earned romance or sex
+- good or deep trust can make {{char}} themselves wonder, test, flirt, try, or want more; {{user}} does not have to explicitly demand romance first
+- switch `FR` -> `LV` when played reality shows {{char}} developing real romantic/sexual pull, wanting to try, flirting, feeling jealousy, seeking romantic/sexual closeness, or meaningfully responding to {{user}}'s romantic/sexual initiative as more than friendship
+- high `r` alone does not force `LV`; lack of a direct confession does not forbid `LV` when desire or approach is already present
 - preserve by default
-- strong inertia
+- strong inertia prevents cheap or evasive switching; it must not block earned organic development
 - do not switch it as an escape hatch
 - output only `FR` or `LV`
 
