@@ -26,6 +26,9 @@ interface GeminiCandidate {
 	content?: {
 		parts?: Array<{ text?: string }>;
 	};
+	finishReason?: string;
+	finishMessage?: string;
+	safetyRatings?: unknown[];
 	groundingMetadata?: GroundingMetadata;
 }
 
@@ -37,6 +40,7 @@ interface GeminiUsageMetadata {
 interface GeminiResponse {
 	response?: {
 		candidates?: GeminiCandidate[];
+		promptFeedback?: unknown;
 		usageMetadata?: GeminiUsageMetadata;
 	};
 	traceId?: string;
@@ -806,12 +810,33 @@ export class GeminiApiClient {
 		
 		let fullGeneratedText = "";
 		let citationsCount = 0;
+		const loggedResponseDiagnostics = new Set<string>();
 
 		for await (const jsonData of this.parseSSEStream(response.body)) {
 			if (!firstChunkTime) firstChunkTime = Date.now();
 			if (!traceId && jsonData.traceId) traceId = jsonData.traceId;
 
 			const candidate = jsonData.response?.candidates?.[0];
+			const responseDiagnostics = {
+				model: originalModel,
+				traceId: jsonData.traceId,
+				promptFeedback: jsonData.response?.promptFeedback,
+				finishReason: candidate?.finishReason,
+				finishMessage: candidate?.finishMessage,
+				safetyRatings: candidate?.safetyRatings
+			};
+			const hasResponseDiagnostics =
+				responseDiagnostics.promptFeedback ||
+				responseDiagnostics.finishReason ||
+				responseDiagnostics.finishMessage ||
+				responseDiagnostics.safetyRatings;
+			if (hasResponseDiagnostics) {
+				const diagnosticsKey = JSON.stringify(responseDiagnostics);
+				if (!loggedResponseDiagnostics.has(diagnosticsKey)) {
+					loggedResponseDiagnostics.add(diagnosticsKey);
+					console.log(`[GeminiAPI][response_diagnostics] ${diagnosticsKey}`);
+				}
+			}
 
 			if (candidate?.groundingMetadata && candidate.groundingMetadata.groundingChunks) {
 				citationsCount += candidate.groundingMetadata.groundingChunks.length;
