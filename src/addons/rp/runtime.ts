@@ -129,11 +129,19 @@ export function stripStateBlocksFromMessages(messages: ChatMessage[]): ChatMessa
 								text: stripStateBlocksFromText(part.text)
 							}
 						: part
-				)
+				).filter((part) => part.type !== "text" || Boolean(part.text?.trim()))
 			};
 		}
 
 		return message;
+	}).filter((message) => {
+		if (message.tool_calls?.length) {
+			return true;
+		}
+		if (typeof message.content === "string") {
+			return message.content.trim().length > 0;
+		}
+		return message.content.length > 0;
 	});
 }
 
