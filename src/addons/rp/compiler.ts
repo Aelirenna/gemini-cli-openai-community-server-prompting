@@ -111,16 +111,24 @@ export const interpretState = (worldState: WorldState, rules: Rules): WorldState
 
 // Keep this parser intentionally close to the original fork because alternate
 // "cleanups" regressed on real-world state formats.
-export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
-	const worldState: WorldState = { characters: {} };
-	const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+function findPreviousStateMatch(messages: ChatMessage[]): RegExpMatchArray | null {
+	for (const message of [...messages].reverse()) {
+		if (message.role !== "assistant" || typeof message.content !== "string") {
+			continue;
+		}
 
-	if (!lastAssistantMessage || typeof lastAssistantMessage.content !== "string") {
-		return worldState;
+		const stateMatch = message.content.match(/<state>\s*(.*?)\s*<\/state>/s);
+		if (stateMatch) {
+			return stateMatch;
+		}
 	}
 
-	const content = lastAssistantMessage.content;
-	const stateMatch = content.match(/<state>\s*(.*?)\s*<\/state>/s);
+	return null;
+}
+
+export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
+	const worldState: WorldState = { characters: {} };
+	const stateMatch = findPreviousStateMatch(messages);
 
 	if (!stateMatch || !stateMatch[1]) {
 		return worldState;
@@ -192,13 +200,7 @@ export const extractPreviousState = (messages: ChatMessage[]): WorldState => {
 };
 
 export const extractPreviousStateBlock = (messages: ChatMessage[]): string => {
-	const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
-
-	if (!lastAssistantMessage || typeof lastAssistantMessage.content !== "string") {
-		return "";
-	}
-
-	return lastAssistantMessage.content.match(/<state>\s*(.*?)\s*<\/state>/s)?.[0] ?? "";
+	return findPreviousStateMatch(messages)?.[0] ?? "";
 };
 
 export const parseInitialPrompt = (systemContent: string): InitialPromptData => {

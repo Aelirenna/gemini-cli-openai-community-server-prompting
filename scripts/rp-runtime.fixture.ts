@@ -4,6 +4,7 @@ import {
 	buildCurrentSituation,
 	buildGmCurrentSituation,
 	extractPreviousState,
+	extractPreviousStateBlock,
 	interpretState,
 	parseRules,
 	relationshipRulesContent
@@ -121,6 +122,27 @@ function makeMessages(includePreviousState = true): ChatMessage[] {
 		{
 			role: "user",
 			content: "I leave the cup on the stone table and wait instead of pushing."
+		}
+	];
+}
+
+function makeMessagesAfterOoc(): ChatMessage[] {
+	const messages = makeMessages();
+	return [
+		messages[0],
+		messages[1],
+		messages[2],
+		{
+			role: "user",
+			content: "OOC: explain why that worked."
+		},
+		{
+			role: "assistant",
+			content: "OOC answer without a technical state block."
+		},
+		{
+			role: "user",
+			content: "I return to the scene and lift the cup again."
 		}
 	];
 }
@@ -318,6 +340,17 @@ async function testNormalPipeline(): Promise<void> {
 	), "final result must append exact state block from state update");
 }
 
+async function testNormalPipelineAfterOoc(): Promise<void> {
+	const calls: StageCall[] = [];
+	const messages = makeMessagesAfterOoc();
+	const result = await runNormalRpTurn(makeServices(calls), makeRequest(messages));
+
+	expect(extractPreviousStateBlock(messages).includes("<state>"), "state lookup must skip assistant OOC without state");
+	expect(extractPreviousState(messages).characters.Yaoshi.R === 5, "state parse must use last assistant message containing state");
+	expect(calls.length === 4, `post-OOC normal turn expected 4 stage calls, got ${calls.length}`);
+	expect(result.includes("Yaoshi looked at the cup"), "post-OOC normal turn must continue RP pipeline");
+}
+
 async function testCustomPipeline(): Promise<void> {
 	const calls: StageCall[] = [];
 	const result = await runCustomRpTurn(makeServices(calls), makeRequest(makeCustomMessages(), "my"));
@@ -491,6 +524,7 @@ async function expectRejects(action: () => Promise<unknown>, expectedMessage: st
 
 export async function runRpRuntimeFixture(): Promise<void> {
 	await testNormalPipeline();
+	await testNormalPipelineAfterOoc();
 	await testCustomPipeline();
 	await testCustomOocRouting();
 	await testMissingPreviousState();
