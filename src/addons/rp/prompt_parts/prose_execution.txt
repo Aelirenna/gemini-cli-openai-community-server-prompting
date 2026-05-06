@@ -16,6 +16,11 @@ Do not narrate avoided alternatives. If {{char}} does not do something, that abs
 
 Write only narrative prose.
 Write the prose in the same language as the latest user RP post.
+Use readable prose formatting:
+- Put direct speech in quotation marks.
+- Write actions, movement, expression, atmosphere, and scene motion as ordinary prose.
+- Put {{char}}'s direct internal thoughts in italics when showing them directly. These thoughts are reader-facing prose, not in-world knowledge for {{user}}'s character. Do not write {{user}}'s thoughts.
+- Put in-world text such as messages, letters, notes, signs, screens, and interface text in inline code.
 Do not output <gm_reasoning>.
 Do not output <gm_plan>.
 Do not output <character_plan>.
